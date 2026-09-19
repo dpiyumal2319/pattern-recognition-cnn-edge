@@ -13,5 +13,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "." is explicit so tests/test_smoke.py can `import scripts.run_experiment`.
+# pytest happens to insert the repo root anyway under prepend import mode, but
+# relying on that is relying on a side effect of tests/ having an __init__.py.
+pythonpath = ["src", "."]
 addopts = "-q"

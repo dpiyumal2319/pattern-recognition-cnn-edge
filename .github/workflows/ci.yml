@@ -1,0 +1,159 @@
+name: CI
+
+# Guards `main` while four people merge into one shared interface contract.
+# The budget is under 3 minutes: CI that people wait on is CI people route
+# around. It enforces what humans forget, not what humans notice - nobody
+# forgets their own code does not run, everybody forgets they broke an import
+# someone else depends on.
+#
+# Deliberately NOT here: real training runs (minutes to hours, needs a GPU,
+# non-deterministic), coverage thresholds, blocking lint.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes the previous run on the same branch. Draft PRs stay
+# open for days by design, so without this a single branch can queue up a
+# dozen redundant runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests and schema validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt', 'pyproject.toml') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        # CPU wheels only. The default index pulls the CUDA build, which is
+        # roughly 2.5GB and buys nothing on a runner with no GPU.
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run test suite
+        # Covers config loading, seeding and determinism, the end-to-end smoke
+        # run, the result-file schemas, and - once #10 lands - the sub-100k
+        # parameter budget for Model B. tests/test_schemas.py is parametrised
+        # over whatever results are committed, so schema drift fails here.
+        run: pytest -v
+
+  hygiene:
+    name: commit and notebook hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed to diff this branch against its merge base.
+          fetch-depth: 0
+
+      - name: No AI co-authorship trailers
+        # A project rule that only a grep will actually enforce. It holds right
+        # up until the one time somebody forgets, and the whole point is that
+        # the commit history is the group's own.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          offenders=$(git log --format='%H %s%n%b' "$BASE..HEAD" \
+            | grep -inE 'co-authored-by:.*(claude|codex|copilot|gpt)|generated with \[?(claude|codex)' \
+            || true)
+          if [ -n "$offenders" ]; then
+            echo "::error::AI attribution trailer found in this PR's commits."
+            echo "$offenders"
+            echo "Remove it with: git rebase -i $BASE  (see AGENTS.md section 2)"
+            exit 1
+          fi
+          echo "No AI attribution trailers in $(git rev-list --count "$BASE..HEAD") commit(s)."
+
+      - name: Notebooks committed without outputs
+        # One notebook with outputs generates merge conflicts for everyone who
+        # touches it afterwards.
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+
+          offenders = []
+          for path in pathlib.Path(".").rglob("*.ipynb"):
+              if ".ipynb_checkpoints" in path.parts:
+                  continue
+              try:
+                  nb = json.loads(path.read_text(encoding="utf-8"))
+              except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                  offenders.append(f"{path}: unreadable ({exc})")
+                  continue
+              for i, cell in enumerate(nb.get("cells", [])):
+                  if cell.get("outputs") or cell.get("execution_count") is not None:
+                      offenders.append(f"{path}: cell {i} carries output or an execution count")
+
+          if offenders:
+              print("::error::Notebook committed with outputs. Strip them: nbstripout <file>")
+              print("\n".join(offenders))
+              sys.exit(1)
+          print("All committed notebooks are clean.")
+          PY
+
+  detect:
+    name: detect report
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      has_report: ${{ steps.check.outputs.has_report }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        # hashFiles() cannot be used in a job-level `if`: it is evaluated
+        # before any checkout exists, and GitHub rejects the whole workflow
+        # rather than treating it as false. A tiny detect job is the portable
+        # way to make a downstream job conditional on a file's existence.
+        run: |
+          if [ -f report/main.tex ]; then
+            echo "has_report=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_report=false" >> "$GITHUB_OUTPUT"
+            echo "report/main.tex does not exist yet (#23) - skipping the LaTeX build."
+          fi
+
+  report:
+    name: report compiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Skips cleanly until #23 creates report/main.tex, then starts enforcing.
+    # A broken \input{} discovered at 11pm on 01 October is the classic way
+    # this assignment goes wrong.
+    needs: detect
+    if: needs.detect.outputs.has_report == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile report/main.tex
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: main.tex
+          working_directory: report
+
+      - name: Upload the PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-pdf
+          path: report/main.pdf
+          if-no-files-found: error
