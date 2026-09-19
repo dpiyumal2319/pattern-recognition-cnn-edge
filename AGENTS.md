@@ -191,6 +191,10 @@ git switch main && git pull origin main && git branch -d <branch>
 
 This is the interface that lets four people work in parallel. Do not change it without an issue.
 
+> **Full specification: [`docs/interfaces.md`](docs/interfaces.md)** — every function signature,
+> the config schema, exact JSON field definitions, the CLI surface and the test-file map. Read it
+> before implementing any issue. The summary below is orientation, not the contract.
+
 Every experiment writes `results/<run_id>/`:
 
 | File | Contents |
@@ -230,6 +234,20 @@ Never hand-type a result into LaTeX. If a run is repeated, the report updates it
 - **Do not commit** `data/`, `*.pt` checkpoints, or LaTeX build artifacts.
 - Comment the code. The brief requires the submitted code to be "complete, well-documented
   (commented), and ready to run".
+
+### Four rules that are easy to break by accident
+
+- **Same device for anything sharing a table.** "Training time per epoch" is a graded column. If
+  Model A was timed on Colab and Model B on a laptop, the comparison is meaningless and a marker
+  will notice. Agree one device for each comparison set and record it in `config.yaml`.
+- **Never merge a generated file.** `report/tables/*.tex` and `report/figures/*.png` are outputs.
+  On a conflict, discard both sides and rerun the generator — resolving them by hand produces a
+  table that matches no actual run.
+- **Push to your draft PR daily, or say you are stuck.** A silent branch in a 13-day project is
+  expensive. Nobody minds a "still blocked on X" comment; everyone minds discovering on day 11
+  that an issue was never started.
+- **Reviewers filter `is:pr is:open -is:draft`.** Draft PRs open for days are the intended state,
+  which means "open PR" no longer means "needs review".
 
 ---
 
