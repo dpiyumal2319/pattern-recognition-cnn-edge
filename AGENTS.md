@@ -64,7 +64,25 @@ git switch -c <type>/<issue-number>-<slug> origin/main
 
 `<type>` is one of `feat`, `fix`, `chore`, `docs`, `exp`. Example: `feat/10-model-b-depthwise`.
 
-### 3. STOP GATE — lecture slides
+### 3. Open a WIP draft PR *before* you start working
+
+Push the branch and open the pull request as a **draft**, immediately — before any implementation.
+If you have nothing to push yet, start with an empty commit:
+
+```bash
+git commit --allow-empty -m "chore: start #<N>"
+git push -u origin HEAD
+gh pr create --draft --title "WIP: <issue title>" --body "Closes #<N>" --fill-first
+```
+
+Why this comes first: the draft PR is the team's live view of who is working on what and how far it
+has got. Four people on one board cannot see branches, but they can see PRs. It also means the diff
+is reviewable incrementally instead of landing as a wall of code on the last day.
+
+If the slides gate below blocks you, say so in the draft PR and add the `blocked` label. A stalled
+draft PR is visible; a stalled local branch is not.
+
+### 4. STOP GATE — lecture slides
 
 **Before writing any methodological code or prose, confirm the relevant deck exists in
 `docs/slides/`.** The issue's **Slide anchor** line names it.
@@ -83,7 +101,7 @@ This is a hard gate, not a preference. The report is graded against the syllabus
 lecturer did not teach is a liability in the report even when it is technically correct, and a
 derivation in notation he does not use costs marks for no benefit.
 
-### 4. Implement, grounded in the slides
+### 5. Implement, grounded in the slides — and log decisions on the PR as you go
 
 Match the decks' notation and terminology. Where the slides give a worked example, mirror its
 structure so the report reads as coursework rather than as a blog post. The clearest case:
@@ -98,19 +116,55 @@ total                            :                 ~=  67,800 ops   (8.7x speedu
 
 Your Model A vs Model B arithmetic should follow exactly that shape.
 
-### 5. Verify before you open a PR
+**Every non-obvious decision gets a comment on the draft PR, at the moment you make it.** Not at the
+end, not in the final description — the value is in capturing the reasoning while the alternatives
+are still fresh. Use four headings:
+
+```markdown
+**What** — replaced the Flatten -> Dense head with global average pooling.
+
+**Why** — the dense head was 187k parameters on its own, over the 100k budget before a single
+convolution was counted. GAP drops it to 1,290.
+
+**Why not the alternatives** — narrowing the conv channels instead would have hit the budget too,
+but costs representational capacity in the feature extractor, which is where the accuracy actually
+comes from. Reducing the flatten size by adding a fifth pooling stage would leave a 2x2 feature map
+and throw away spatial detail that the 64x64 input barely has to begin with.
+
+**How** — nn.AdaptiveAvgPool2d(1) then a single Linear(128, 10). Verified by the sub-100k unit test
+in tests/test_model_b.py.
+```
+
+This is not bureaucracy. Roughly 60 of the 100 marks are discussion, and these comments are the
+raw material for it — the "why not" paragraphs in particular are what turn a results table into an
+argument. When you write `report/sections/*.tex`, you should be editing your own PR comments, not
+reconstructing forgotten reasoning two weeks later.
+
+Log a decision whenever you: pick a hyperparameter, choose between two architectures or libraries,
+deviate from what an issue specified, hit a result you did not expect, or discard an approach that
+did not work. **Dead ends are worth recording** — "we tried X and it failed because Y" is a
+legitimate and often high-value report sentence.
+
+### 6. Verify before marking the PR ready
 
 Run the script end to end. Confirm the `results/<run_id>/` artifacts actually appear on disk and
 match the contract in section 3. An issue is not done because the code imports cleanly.
 
-### 6. Open a PR
+### 7. Mark the PR ready for review
 
-- Title mirrors the issue.
-- Body contains `Closes #N`, a one-paragraph summary of what changed, and the paths of any
-  generated artifacts.
+```bash
+gh pr ready
+```
+
+Before you do, bring the description up to date so a reviewer never has to read the comment thread
+to understand the change:
+
+- Title mirrors the issue; drop the `WIP:` prefix.
+- Body contains `Closes #N`, a summary of what changed, the paths of any generated artifacts, and a
+  short **Decisions** section distilling the comment thread.
 - Request review from one other member.
 
-### 7. Merge and clean up
+### 8. Merge and clean up
 
 Never merge your own PR without one approval. After merge, delete the branch and return to `main`:
 
