@@ -103,6 +103,12 @@ derivation in notation he does not use costs marks for no benefit.
 
 ### 5. Implement, grounded in the slides — and log decisions on the PR as you go
 
+> **Start at [`docs/course-scope.md`](docs/course-scope.md).** It indexes every concept this
+> assignment needs to its deck, its page number and the formula retyped legibly, so you are not
+> parsing 59 pages of mangled PDF text to find one equation. It does not replace the gate above —
+> the deck must still be present, and the index cites pages precisely so you can verify against
+> the source.
+
 Match the decks' notation and terminology. Where the slides give a worked example, mirror its
 structure so the report reads as coursework rather than as a blog post. The clearest case:
 `CNNs.pdf` derives depthwise separable cost as
