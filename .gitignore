@@ -1,0 +1,45 @@
+# Datasets - never committed, regenerate with scripts/prepare_data.py.
+# data/* rather than data/ so the negation below can take effect: git will not
+# descend into an excluded DIRECTORY, so !data/.gitkeep under `data/` is dead.
+# The split manifest is committed: it is what proves every experiment, custom
+# and SOTA alike, used the same partition.
+data/*
+!data/.gitkeep
+!data/splits.csv
+!data/norm_stats.json
+
+# Model checkpoints - too large, and reproducible from a config plus a seed
+*.pt
+*.pth
+
+# Smoke runs are CI scratch, not results
+results/_smoke_*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# LaTeX build artifacts
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.fls
+report/*.fdb_latexmk
+report/*.synctex.gz
+report/main.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# NOTE: results/**/*.json and results/**/figures/*.png are deliberately NOT
+# ignored. They are the report's data source - every table and figure is
+# generated from them, so they must travel with the repo.
