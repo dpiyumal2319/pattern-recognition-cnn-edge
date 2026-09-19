@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+"""Generate the report's LaTeX tables from committed result artifacts.
+
+    python scripts/build_tables.py --all
+    python scripts/build_tables.py --table custom
+
+This is the ONLY path by which a number reaches the report. Individual table
+builders are implemented by #18, #22, #24 and #25.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from pr_edge.paths import DATA_DIR, REPORT_DIR  # noqa: E402
+from pr_edge.tables import (  # noqa: E402
+    build_custom_comparison,
+    build_dataset_table,
+    build_final_comparison,
+    build_sota_comparison,
+)
+
+TABLES_DIR = REPORT_DIR / "tables"
+
+# Which runs feed which table. Fixed here so no issue has to guess, and so a
+# missing run fails loudly rather than producing a table with a gap in it.
+BUILDERS = {
+    "dataset": lambda: build_dataset_table(DATA_DIR / "splits.csv", TABLES_DIR / "dataset.tex"),
+    "custom": lambda: build_custom_comparison(["model_a", "model_b"], TABLES_DIR / "custom_comparison.tex"),
+    "sota": lambda: build_sota_comparison(
+        ["mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224"], TABLES_DIR / "sota_comparison.tex"
+    ),
+    "final": lambda: build_final_comparison(
+        ["model_b", "mobilenetv2_64", "efficientnetb0_64"], TABLES_DIR / "final_comparison.tex"
+    ),
+}
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all", action="store_true", help="build every table")
+    group.add_argument("--table", choices=sorted(BUILDERS), help="build one table")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    TABLES_DIR.mkdir(parents=True, exist_ok=True)
+
+    names = sorted(BUILDERS) if args.all else [args.table]
+    for name in names:
+        path = BUILDERS[name]()
+        print(f"[tables] {name} -> {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

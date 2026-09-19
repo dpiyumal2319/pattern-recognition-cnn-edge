@@ -1,0 +1,13 @@
+# EN3150 A03 - resource-constrained CNN for edge image classification
+#
+# torchvision>=0.20 is a HARD requirement, not a preference: earlier versions
+# download EuroSAT from https://madm.dfki.de/files/sentinel/EuroSAT.zip, which is
+# dead. 0.20 and later use the HuggingFace torchgeo/eurosat mirror.
+torch>=2.4
+torchvision>=0.20
+
+numpy>=1.26
+pyyaml>=6.0
+matplotlib>=3.8
+
+pytest>=8.0

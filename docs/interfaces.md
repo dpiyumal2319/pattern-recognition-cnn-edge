@@ -90,6 +90,23 @@ REPORT_DIR: Path      # report/
 def run_dir(run_id: str, smoke: bool = False) -> Path        # results/<run_id>/ or results/_smoke_<run_id>/
 ```
 
+### `src/pr_edge/schemas.py`
+
+```python
+HISTORY_FIELDS, METRICS_FIELDS, PER_CLASS_FIELDS, PROFILE_FIELDS: dict[str, tuple]
+
+def validate_history(data: Any) -> list[str]        # violations; an empty list means valid
+def validate_metrics(data: Any) -> list[str]
+def validate_profile(data: Any) -> list[str]
+def validate_file(path: Path) -> list[str]          # dispatches on filename
+def validate_run_dir(directory: Path) -> list[str]  # also reports missing files
+```
+
+The machine-checkable form of section 3 below - prose cannot fail a build. Deliberately
+dependency-free: the schemas are simple enough that a short validator is clearer than
+`jsonschema` or `pydantic`, and one fewer pinned package is one fewer thing to break on a Colab
+runtime. `tests/test_schemas.py` runs these against every committed results file on every PR.
+
 ### `src/pr_edge/data.py`
 
 ```python
