@@ -112,6 +112,27 @@ jobs:
           print("All committed notebooks are clean.")
           PY
 
+  detect:
+    name: detect report
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      has_report: ${{ steps.check.outputs.has_report }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        # hashFiles() cannot be used in a job-level `if`: it is evaluated
+        # before any checkout exists, and GitHub rejects the whole workflow
+        # rather than treating it as false. A tiny detect job is the portable
+        # way to make a downstream job conditional on a file's existence.
+        run: |
+          if [ -f report/main.tex ]; then
+            echo "has_report=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_report=false" >> "$GITHUB_OUTPUT"
+            echo "report/main.tex does not exist yet (#23) - skipping the LaTeX build."
+          fi
+
   report:
     name: report compiles
     runs-on: ubuntu-latest
@@ -119,7 +140,8 @@ jobs:
     # Skips cleanly until #23 creates report/main.tex, then starts enforcing.
     # A broken \input{} discovered at 11pm on 01 October is the classic way
     # this assignment goes wrong.
-    if: hashFiles('report/main.tex') != ''
+    needs: detect
+    if: needs.detect.outputs.has_report == 'true'
     steps:
       - uses: actions/checkout@v4
 
