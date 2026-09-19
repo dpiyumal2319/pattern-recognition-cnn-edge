@@ -87,3 +87,4 @@ number and it silently goes stale.
   construction. The report must state this explicitly rather than skipping the requirement.
 - **Never call `.cuda()`.** Always `get_device()` — members run on CUDA, MPS and CPU.
 - **Runs that share a table must share a device.** Epoch time is otherwise meaningless.
+test
