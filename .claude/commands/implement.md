@@ -4,7 +4,9 @@ argument-hint: <issue-number>
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 ---
 
-Implement issue **#$1** in this repository, following the loop in `AGENTS.md` exactly.
+Implement issue **#$ARGUMENTS** in this repository, following the loop in `AGENTS.md` exactly.
+
+If no issue number was supplied, stop and ask for one rather than guessing.
 
 Work through the phases below in order. Do not skip ahead, and do not start writing implementation
 code before phase 3 has passed.
@@ -20,7 +22,7 @@ Read, in this order:
 3. The issue itself:
 
 ```bash
-gh issue view $1 --json number,title,body,labels,milestone
+gh issue view $ARGUMENTS --json number,title,body,labels,milestone
 ```
 
 Extract from the body: **Goal**, **Depends on**, **Acceptance criteria**, **Report artifact
@@ -43,10 +45,10 @@ Before writing any code:
 
 ```bash
 git fetch origin
-git switch -c <type>/$1-<slug> origin/main
-git commit --allow-empty -m "chore: start #$1"
+git switch -c <type>/$ARGUMENTS-<slug> origin/main
+git commit --allow-empty -m "chore: start #$ARGUMENTS"
 git push -u origin HEAD
-gh pr create --draft --title "WIP: <issue title>" --body "Closes #$1"
+gh pr create --draft --title "WIP: <issue title>" --body "Closes #$ARGUMENTS"
 ```
 
 `<type>` is `feat`, `fix`, `chore`, `docs` or `exp`, matching the issue title prefix.
@@ -110,7 +112,7 @@ about it.
 
 ## Phase 6 — Ready for review
 
-Update the PR description to the template in `.github/pull_request_template.md`: `Closes #$1`, what
+Update the PR description to the template in `.github/pull_request_template.md`: `Closes #$ARGUMENTS`, what
 changed, generated artifact paths, a **Decisions** section distilling your comment thread, and what
 you actually ran under Verification.
 
