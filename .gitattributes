@@ -1,0 +1,19 @@
+# Normalise line endings in the repository regardless of each member's local
+# core.autocrlf. Without this, the first person on a differently-configured
+# machine to regenerate data/splits.csv commits a 27,000-line diff in which
+# every line changed only its line ending.
+* text=auto eol=lf
+
+# Binary, so git never tries to normalise or diff them as text.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.zip binary
+*.pt  binary
+*.pth binary
+
+# Generated from results/ by scripts/build_tables.py. Marking them as generated
+# collapses them in GitHub diffs, which is what we want: on a conflict the rule
+# in AGENTS.md is to rerun the generator, never to merge them by hand.
+report/tables/*.tex linguist-generated=true
+data/splits.csv     linguist-generated=true

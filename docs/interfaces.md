@@ -88,7 +88,13 @@ RESULTS_DIR: Path     # results/
 REPORT_DIR: Path      # report/
 
 def run_dir(run_id: str, smoke: bool = False) -> Path        # results/<run_id>/ or results/_smoke_<run_id>/
+def resolve_path(path: str | Path) -> Path                   # config path -> repo-root-relative  [#2]
 ```
+
+Config files hold relative paths, so every one of them must go through `resolve_path` rather than
+being used as-is. Resolving against the process CWD instead would make `scripts/prepare_data.py`
+create `scripts/data/` when launched from inside `scripts/`, and do the same in a Colab notebook
+that `cd`s after cloning. Absolute paths pass through untouched.
 
 ### `src/pr_edge/schemas.py`
 
@@ -111,8 +117,13 @@ runtime. `tests/test_schemas.py` runs these against every committed results file
 
 ```python
 CLASS_NAMES: list[str]    # the 10 EuroSAT classes, fixed order, the ONLY source of class ordering
+SPLIT_FRACTIONS: dict[str, float]    # {"train": 0.70, "val": 0.15, "test": 0.15}
+class DataError(RuntimeError)        # dataset on disk or manifest is not what we require
 
 def prepare_eurosat(cfg: Config, force: bool = False) -> Path                    # -> manifest path   [#2]
+def read_manifest(manifest: str | Path) -> list[dict[str, str]]                  # rows of the CSV    [#2]
+def validate_manifest(rows: list[dict[str, str]]) -> None                        # raises DataError   [#2]
+def summarise_manifest(rows: list[dict[str, str]]) -> str                        # printable table    [#2]
 def compute_norm_stats(cfg: Config) -> dict[str, list[float]]                    # {"mean":[...], "std":[...]}  [#3]
 def get_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]    # train, val, test   [#3]
 def get_synthetic_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]   # smoke mode  [#1]
@@ -120,6 +131,19 @@ def get_synthetic_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, Data
 
 `compute_norm_stats` uses the **training split only**. `get_dataloaders` applies augmentation to the
 training loader only; val and test are deterministic.
+
+**The split manifest** `data/splits.csv` is committed and is the partition — not a cache of it.
+Three columns, no more:
+
+| Column | Value |
+|---|---|
+| `filepath` | relative to `<data.root>/eurosat/2750/`, forward slashes, e.g. `AnnualCrop/AnnualCrop_1.jpg` |
+| `label` | the class **name**; the index comes from `CLASS_NAMES.index()`, never from the file |
+| `split` | `train` \| `val` \| `test` |
+
+Rows are sorted by `(class index, filepath)` and written with an explicit `\n` terminator, so the
+file is byte-identical on Windows, Linux and Colab. Nothing regenerates it implicitly:
+`prepare_eurosat` returns an existing manifest untouched unless called with `force=True`.
 
 ### `src/pr_edge/models/`
 

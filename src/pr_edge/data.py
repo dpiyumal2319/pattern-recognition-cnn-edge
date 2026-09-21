@@ -4,18 +4,30 @@ EuroSAT is 27,000 Sentinel-2 RGB tiles across 10 land-use classes, natively
 64x64 - so the brief's "downscale to a maximum of 64x64" is satisfied by
 construction rather than by a resize step. The report must say this explicitly.
 
-Only the smoke-mode path is implemented here. The real download, split and
-loader work belongs to #2 and #3, whose signatures are frozen below.
+The split produced here is written to a committed manifest (``data/splits.csv``)
+and is never recomputed at training time. That is deliberate: the brief requires
+the fine-tuned SOTA models to use the same partition as the custom models, and
+the only way to *prove* that across four machines is to ship the partition
+itself rather than the code that would regenerate it.
+
+Loader construction, normalisation statistics and augmentation belong to #3,
+whose signatures are frozen below.
 """
 
 from __future__ import annotations
 
+import csv
+import math
+from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from .config import Config
+from .paths import resolve_path
 
 # The single source of class ordering for the whole project. Never re-derive
 # this from a directory listing: filesystem order is not guaranteed across
@@ -38,13 +50,288 @@ CLASS_NAMES: list[str] = [
 # large enough that every class appears in every split.
 SMOKE_SIZES = {"train": 200, "val": 50, "test": 50}
 
+# The brief's 70/15/15. Insertion order matters: it is the tie-break order used
+# when the largest-remainder allocation below has a whole image left to place.
+SPLIT_FRACTIONS: dict[str, float] = {"train": 0.70, "val": 0.15, "test": 0.15}
+
+MANIFEST_COLUMNS = ("filepath", "label", "split")
+
+# torchvision extracts the archive to <root>/eurosat/2750/<ClassName>/*.jpg.
+# Manifest paths are relative to that directory rather than to <root>, so the
+# manifest stays valid for a member who keeps the dataset on another drive.
+EUROSAT_IMAGE_SUBDIR = Path("eurosat") / "2750"
+
+EXPECTED_TOTAL = 27_000
+
+
+class DataError(RuntimeError):
+    """Raised when the dataset on disk or the manifest is not what we require."""
+
+
+# ---------------------------------------------------------------------------
+# The split
+# ---------------------------------------------------------------------------
+
+
+def _allocate(n: int) -> dict[str, int]:
+    """Split ``n`` items into 70/15/15 by the largest-remainder method.
+
+    Naive rounding does not sum back to ``n``: a class of 13 gives quotas of
+    9.1, 1.95 and 1.95, and three independent ``round`` calls happen to work
+    there but not in general. Largest remainder floors every quota and then
+    hands the leftover items to the splits that were rounded down hardest, so
+    the parts always sum to the whole and no image is dropped or duplicated.
+
+    EuroSAT's own class sizes (3000, 2500, 2000) all divide exactly into
+    70/15/15, so on the real dataset this reduces to plain division - but the
+    code must not depend on a property of one dataset.
+    """
+    exact = {name: n * frac for name, frac in SPLIT_FRACTIONS.items()}
+    counts = {name: math.floor(value) for name, value in exact.items()}
+
+    leftover = n - sum(counts.values())
+    if leftover:
+        # Largest fractional part first; ties fall back to SPLIT_FRACTIONS order
+        # (train, val, test) so the result is a pure function of n.
+        order = sorted(
+            exact,
+            key=lambda name: (
+                -(exact[name] - counts[name]),
+                list(SPLIT_FRACTIONS).index(name),
+            ),
+        )
+        for name in order[:leftover]:
+            counts[name] += 1
+
+    return counts
+
+
+def _stratified_split(labels: Sequence[int], seed: int) -> list[str]:
+    """Assign every index to "train", "val" or "test", stratified by label.
+
+    Returns a list parallel to ``labels``.
+
+    Each class draws from its own generator seeded with ``seed + label``, so
+    adding or removing one class cannot reshuffle the others. A single shared
+    stream would make the whole partition sensitive to a change in any one
+    class - grow one class by ten images and every later class repartitions.
+
+    **This function is positional.** An item's split depends on its rank within
+    its class in the order given, so passing the same files in a different
+    order yields a different partition. Making the split a property of the
+    *files* rather than of the enumeration order is the caller's job:
+    :func:`prepare_eurosat` sorts by ``(class index, filepath)`` first, which
+    is what keeps Windows, Linux and a Colab runtime in agreement.
+    """
+    by_label: dict[int, list[int]] = defaultdict(list)
+    for index, label in enumerate(labels):
+        by_label[int(label)].append(index)
+
+    assignment: list[str | None] = [None] * len(labels)
+
+    for label in sorted(by_label):
+        indices = np.array(sorted(by_label[label]))
+        order = np.random.default_rng(seed + label).permutation(len(indices))
+        shuffled = indices[order]
+
+        cursor = 0
+        for split, count in _allocate(len(indices)).items():
+            for index in shuffled[cursor : cursor + count]:
+                assignment[int(index)] = split
+            cursor += count
+
+    if any(value is None for value in assignment):  # pragma: no cover - guards a logic error
+        raise DataError("internal error: an index was left unassigned by the split")
+    return [str(value) for value in assignment]
+
+
+# ---------------------------------------------------------------------------
+# The manifest
+# ---------------------------------------------------------------------------
+
+
+def _write_manifest(rows: list[dict[str, str]], manifest: Path) -> None:
+    r"""Write the manifest so four machines produce byte-identical files.
+
+    ``newline=""`` plus an explicit ``\n`` terminator is not a style choice: the
+    csv module emits CRLF by default, and on Windows the file object would then
+    translate those again. A manifest that differed by platform would show up as
+    a 27,000-line diff the first time somebody on another OS reran the script.
+    """
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    with manifest.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(MANIFEST_COLUMNS), lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def read_manifest(manifest: str | Path) -> list[dict[str, str]]:
+    """Read the split manifest. Used by #3's loaders and by #24's dataset table."""
+    manifest = resolve_path(manifest)
+    if not manifest.exists():
+        raise DataError(
+            f"split manifest not found: {manifest}. Run scripts/prepare_data.py first."
+        )
+    with manifest.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def validate_manifest(rows: list[dict[str, str]]) -> None:
+    """Raise :class:`DataError` unless the manifest is usable and stratified.
+
+    Checked on every load, not only on generation. The manifest is committed,
+    which means a bad merge can corrupt it - and a silently broken partition is
+    the one failure in this project that invalidates every number downstream of
+    it instead of crashing.
+    """
+    if not rows:
+        raise DataError("manifest is empty")
+
+    missing = set(MANIFEST_COLUMNS) - set(rows[0])
+    if missing:
+        raise DataError(f"manifest is missing column(s): {sorted(missing)}")
+
+    paths = [row["filepath"] for row in rows]
+    if len(set(paths)) != len(paths):
+        raise DataError(
+            f"manifest lists {len(paths) - len(set(paths))} duplicate path(s) - "
+            "an image in two splits leaks test data into training"
+        )
+
+    unknown_labels = {row["label"] for row in rows} - set(CLASS_NAMES)
+    if unknown_labels:
+        raise DataError(f"manifest holds label(s) outside CLASS_NAMES: {sorted(unknown_labels)}")
+
+    unknown_splits = {row["split"] for row in rows} - set(SPLIT_FRACTIONS)
+    if unknown_splits:
+        raise DataError(f"manifest holds unknown split name(s): {sorted(unknown_splits)}")
+
+    # Stratification: every class must hold its own 70/15/15, not merely the
+    # totals. A manifest can be 70/15/15 overall while one whole class sits in
+    # the test split.
+    per_class: dict[str, dict[str, int]] = defaultdict(lambda: dict.fromkeys(SPLIT_FRACTIONS, 0))
+    for row in rows:
+        per_class[row["label"]][row["split"]] += 1
+
+    for label in sorted(per_class):
+        actual = per_class[label]
+        expected = _allocate(sum(actual.values()))
+        if actual != expected:
+            raise DataError(
+                f"class '{label}' is split {actual}, expected {expected}. "
+                "Regenerate with: python scripts/prepare_data.py --force"
+            )
+
+
+def summarise_manifest(rows: list[dict[str, str]]) -> str:
+    """Per-class counts per split, as a plain-text table.
+
+    This is the printed summary the issue asks for, and the same numbers #24
+    renders as the report's dataset table.
+    """
+    counts: dict[str, dict[str, int]] = {
+        name: dict.fromkeys(SPLIT_FRACTIONS, 0) for name in CLASS_NAMES
+    }
+    for row in rows:
+        counts[row["label"]][row["split"]] += 1
+
+    width = max(len(name) for name in CLASS_NAMES)
+    header = f"{'class':<{width}}  {'train':>7} {'val':>7} {'test':>7} {'total':>7}"
+    lines = [header, "-" * len(header)]
+
+    totals = dict.fromkeys(SPLIT_FRACTIONS, 0)
+    for name in CLASS_NAMES:
+        row_counts = counts[name]
+        for split, value in row_counts.items():
+            totals[split] += value
+        lines.append(
+            f"{name:<{width}}  {row_counts['train']:>7} {row_counts['val']:>7} "
+            f"{row_counts['test']:>7} {sum(row_counts.values()):>7}"
+        )
+
+    grand = sum(totals.values())
+    lines.append("-" * len(header))
+    lines.append(
+        f"{'total':<{width}}  {totals['train']:>7} {totals['val']:>7} "
+        f"{totals['test']:>7} {grand:>7}"
+    )
+    if grand:
+        shares = " ".join(f"{100 * totals[s] / grand:>6.2f}%" for s in ("train", "val", "test"))
+        lines.append(f"{'share':<{width}}  {shares} {100.0:>6.2f}%")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Public entry points
+# ---------------------------------------------------------------------------
+
 
 def prepare_eurosat(cfg: Config, force: bool = False) -> Path:
     """Download EuroSAT and write the stratified 70/15/15 split manifest.
 
-    Returns the manifest path. Implemented by #2.
+    Returns the manifest path. Re-running is a no-op: an existing manifest is
+    validated and returned without touching the download, because regenerating
+    a split that experiments have already been run against would silently
+    invalidate every result in ``results/``. ``force=True`` is the explicit
+    opt-in to that.
     """
-    raise NotImplementedError("prepare_eurosat is issue #2")
+    root = resolve_path(cfg.data.root)
+    manifest = resolve_path(cfg.data.manifest)
+
+    if manifest.exists() and not force:
+        rows = read_manifest(manifest)
+        validate_manifest(rows)
+        print(f"[data] reusing existing manifest ({len(rows)} images): {manifest}")
+        print(summarise_manifest(rows))
+        return manifest
+
+    # Imported here rather than at module scope: torchvision's dataset machinery
+    # is only needed on the one code path that actually downloads, so keeping it
+    # out of the import graph leaves CLASS_NAMES cheap to import from anywhere.
+    from torchvision.datasets import EuroSAT
+
+    image_root = root / EUROSAT_IMAGE_SUBDIR
+    print(f"[data] dataset root: {root}")
+    if not image_root.exists():
+        print("[data] downloading EuroSAT (~94 MB) from the torchgeo HuggingFace mirror ...")
+
+    dataset = EuroSAT(root=str(root), download=True)
+
+    # The divergence guard from docs/interfaces.md section 6. ImageFolder derives
+    # its class order from a sorted directory listing; CLASS_NAMES is the
+    # project's declared order. They agree today, and this is what makes it a
+    # loud error rather than a silent relabelling if they ever stop agreeing.
+    if list(dataset.classes) != CLASS_NAMES:
+        raise DataError(
+            "on-disk class order does not match CLASS_NAMES.\n"
+            f"  on disk:     {list(dataset.classes)}\n"
+            f"  CLASS_NAMES: {CLASS_NAMES}"
+        )
+
+    records = [
+        (Path(path).relative_to(image_root).as_posix(), int(label))
+        for path, label in dataset.samples
+    ]
+    # Sort before splitting so the seed, not the filesystem, decides the split.
+    records.sort(key=lambda record: (record[1], record[0]))
+
+    splits = _stratified_split([label for _, label in records], cfg.seed)
+    rows = [
+        {"filepath": path, "label": CLASS_NAMES[label], "split": split}
+        for (path, label), split in zip(records, splits)
+    ]
+
+    validate_manifest(rows)
+    _write_manifest(rows, manifest)
+
+    if len(rows) != EXPECTED_TOTAL:
+        # Not fatal - the offline test fixture is deliberately small - but on a
+        # real run it means the extraction was incomplete.
+        print(f"[data] NOTE: found {len(rows)} images, expected {EXPECTED_TOTAL} for full EuroSAT")
+
+    print(f"[data] wrote {len(rows)} rows (seed {cfg.seed}) to {manifest}")
+    print(summarise_manifest(rows))
+    return manifest
 
 
 def compute_norm_stats(cfg: Config) -> dict[str, list[float]]:
