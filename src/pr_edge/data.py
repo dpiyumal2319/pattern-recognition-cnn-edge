@@ -111,16 +111,17 @@ def _stratified_split(labels: Sequence[int], seed: int) -> list[str]:
 
     Returns a list parallel to ``labels``.
 
-    Two properties matter more than the shuffling itself:
+    Each class draws from its own generator seeded with ``seed + label``, so
+    adding or removing one class cannot reshuffle the others. A single shared
+    stream would make the whole partition sensitive to a change in any one
+    class - grow one class by ten images and every later class repartitions.
 
-    * **Platform independence.** Indices are sorted within each class before
-      being permuted. Directory iteration order differs between Windows, Linux
-      and a Colab runtime, so without the sort the seed would not be the only
-      input and two members would produce two different "seeded" splits.
-    * **Per-class independence.** Each class draws from its own generator seeded
-      with ``seed + label``, so adding or removing one class cannot reshuffle
-      the others. A single shared stream would make the whole partition
-      sensitive to a change in any one class.
+    **This function is positional.** An item's split depends on its rank within
+    its class in the order given, so passing the same files in a different
+    order yields a different partition. Making the split a property of the
+    *files* rather than of the enumeration order is the caller's job:
+    :func:`prepare_eurosat` sorts by ``(class index, filepath)`` first, which
+    is what keeps Windows, Linux and a Colab runtime in agreement.
     """
     by_label: dict[int, list[int]] = defaultdict(list)
     for index, label in enumerate(labels):

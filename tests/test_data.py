@@ -18,6 +18,7 @@ See docs/interfaces.md section 5 for the full test-file map.
 from __future__ import annotations
 
 import csv
+from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -121,27 +122,6 @@ def test_split_is_deterministic_from_the_seed():
     assert _stratified_split(labels, seed=42) != _stratified_split(labels, seed=7)
 
 
-def test_split_is_independent_of_the_order_labels_arrive_in():
-    """Directory order differs across platforms; the seed must be the only input."""
-    labels = _labels(AWKWARD_SIZES)
-    reference = _stratified_split(labels, seed=42)
-
-    # Interleave the classes instead of grouping them. Each index keeps its own
-    # label, so a correct implementation assigns each one the same split.
-    order = sorted(range(len(labels)), key=lambda i: (i % 7, i))
-    shuffled = [labels[i] for i in order]
-    shuffled_splits = _stratified_split(shuffled, seed=42)
-
-    per_class_reference = {label: sorted(
-        split for value, split in zip(labels, reference) if value == label
-    ) for label in AWKWARD_SIZES}
-    per_class_shuffled = {label: sorted(
-        split for value, split in zip(shuffled, shuffled_splits) if value == label
-    ) for label in AWKWARD_SIZES}
-
-    assert per_class_reference == per_class_shuffled
-
-
 def test_changing_one_class_does_not_reshuffle_the_others():
     """Per-class generators mean a dataset change is locally contained."""
     base = _stratified_split(_labels({0: 50, 1: 50}), seed=42)
@@ -190,6 +170,47 @@ def test_manifest_paths_are_relative_and_posix(fake_eurosat: Path):
         assert "\\" not in row["filepath"]
         assert not Path(row["filepath"]).is_absolute()
         assert row["filepath"].startswith(f"{row['label']}/")
+
+
+def test_split_is_a_property_of_the_files_not_the_directory_order(fake_eurosat: Path):
+    """The guarantee that makes four machines agree.
+
+    ``_stratified_split`` is positional - an item's split depends on its rank
+    within its class. So the partition is only reproducible elsewhere if the
+    ordering fed to it is derivable from the files themselves, which is what
+    the sort in ``prepare_eurosat`` provides. This recomputes the mapping from
+    nothing but the sorted filenames and the seed, and demands an exact match.
+    """
+    manifest_path = fake_eurosat / "splits.csv"
+    rows = read_manifest(prepare_eurosat(_config(fake_eurosat, manifest_path)))
+
+    by_class: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        by_class[row["label"]].append(row["filepath"])
+
+    records = [
+        (path, CLASS_NAMES.index(name))
+        for name in CLASS_NAMES
+        for path in sorted(by_class[name])
+    ]
+    records.sort(key=lambda record: (record[1], record[0]))
+    expected = dict(
+        zip(
+            [path for path, _ in records],
+            _stratified_split([label for _, label in records], seed=42),
+        )
+    )
+
+    assert {row["filepath"]: row["split"] for row in rows} == expected
+
+
+def test_manifest_rows_are_sorted(fake_eurosat: Path):
+    """A stable row order keeps the committed file diffable."""
+    manifest_path = fake_eurosat / "splits.csv"
+    rows = read_manifest(prepare_eurosat(_config(fake_eurosat, manifest_path)))
+
+    keys = [(CLASS_NAMES.index(row["label"]), row["filepath"]) for row in rows]
+    assert keys == sorted(keys)
 
 
 def test_manifest_is_written_with_unix_line_endings(fake_eurosat: Path):
