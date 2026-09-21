@@ -29,3 +29,20 @@ def run_dir(run_id: str, smoke: bool = False) -> Path:
     path = RESULTS_DIR / name
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def resolve_path(path: str | Path) -> Path:
+    """Resolve a config path against the repository root.
+
+    Config files hold relative paths (``data/``, ``data/splits.csv``) because
+    absolute paths would be unshareable across four machines. Resolving them
+    against the process CWD instead of the repo root is the subtle failure this
+    avoids: ``python scripts/prepare_data.py`` launched from inside ``scripts/``
+    would otherwise create ``scripts/data/``, and a Colab notebook that
+    ``cd``s anywhere after cloning would do the same.
+
+    Absolute paths pass through untouched, so a member with the dataset on
+    another drive can point ``data.root`` at it.
+    """
+    path = Path(path)
+    return path if path.is_absolute() else PROJECT_ROOT / path
