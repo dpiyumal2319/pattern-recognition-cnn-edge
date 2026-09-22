@@ -22,6 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from pr_edge.config import Config, DataConfig
 from pr_edge.data import (
@@ -30,6 +31,7 @@ from pr_edge.data import (
     EXPECTED_TOTAL,
     SPLIT_FRACTIONS,
     DataError,
+    _EuroSATDataset,
     _allocate,
     _stratified_split,
     prepare_eurosat,
@@ -333,6 +335,109 @@ def test_committed_manifest_has_unix_line_endings():
 # ---------------------------------------------------------------------------
 # Owned by #3 - loaders, normalisation and augmentation
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def image_manifest(tmp_path: Path) -> Config:
+    """Decodable images with known pixels and an explicit 70/15/15 manifest.
+
+    Use nonconsecutive class indices in reverse order to catch accidental
+    relabelling or directory-based sorting. PNG keeps pixel assertions exact.
+    """
+    rows = []
+    for name in ("River", "Forest"):
+        directory = tmp_path / EUROSAT_IMAGE_SUBDIR / name
+        directory.mkdir(parents=True)
+        for index in range(20):
+            relative = f"{name}/{index}.png"
+            Image.new("RGB", (8, 8), (index, CLASS_NAMES.index(name), 100)).save(
+                tmp_path / EUROSAT_IMAGE_SUBDIR / relative
+            )
+            rows.append({
+                "filepath": relative,
+                "label": name,
+                "split": "train" if index < 14 else "val" if index < 17 else "test",
+            })
+    # Files absent from the manifest must never enter a split implicitly.
+    Image.new("RGB", (8, 8)).save(directory / "unlisted.png")
+    manifest = tmp_path / "splits.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("filepath", "label", "split"))
+        writer.writeheader()
+        writer.writerows(rows)
+    return _config(tmp_path, manifest)
+
+
+@pytest.mark.parametrize("split,indices", [
+    ("train", range(14)), ("val", range(14, 17)), ("test", range(17, 20)),
+])
+def test_dataset_loads_exact_manifest_members_and_labels(image_manifest, split, indices):
+    manifest = Path(image_manifest.data.manifest)
+    original = manifest.read_bytes()
+    dataset = _EuroSATDataset(image_manifest, split)
+    expected = [
+        (index, CLASS_NAMES.index(name))
+        for name in ("River", "Forest")
+        for index in indices
+    ]
+    assert len(dataset) == len(expected)
+    for position, (pixel, class_index) in enumerate(expected):
+        image, label = dataset[position]
+        assert image.mode == "RGB"
+        assert image.size == (8, 8)
+        assert image.getpixel((0, 0)) == (pixel, class_index, 100)
+        assert label == class_index
+    assert manifest.read_bytes() == original
+
+
+def test_dataset_resolves_config_paths_from_project_root(image_manifest, monkeypatch, tmp_path):
+    from pr_edge import paths
+
+    monkeypatch.setattr(paths, "PROJECT_ROOT", tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    cfg = _config(Path("."), Path("splits.csv"))
+    image, label = _EuroSATDataset(cfg, "val")[0]
+    assert image.getpixel((0, 0)) == (14, CLASS_NAMES.index("River"), 100)
+    assert label == CLASS_NAMES.index("River")
+
+
+def test_dataset_converts_to_rgb_before_applying_transform(image_manifest):
+    from torchvision.transforms import ToTensor
+
+    path = Path(image_manifest.data.root) / EUROSAT_IMAGE_SUBDIR / "River/0.png"
+    Image.new("L", (8, 8), 255).save(path)
+    image, label = _EuroSATDataset(image_manifest, "train", transform=ToTensor())[0]
+    assert tuple(image.shape) == (3, 8, 8)
+    assert image.eq(1).all()
+    assert label == CLASS_NAMES.index("River")
+
+
+def test_dataset_rejects_duplicates_across_splits(image_manifest):
+    manifest = Path(image_manifest.data.manifest)
+    with manifest.open("a", encoding="utf-8", newline="") as handle:
+        csv.writer(handle).writerow(("River/0.png", "River", "test"))
+    with pytest.raises(DataError, match="duplicate"):
+        _EuroSATDataset(image_manifest, "train")
+
+
+def test_dataset_rejects_unknown_split(image_manifest):
+    with pytest.raises(DataError, match="unknown dataset split"):
+        _EuroSATDataset(image_manifest, "validation")
+
+
+@pytest.mark.parametrize("contents", [None, b"not an image"])
+def test_dataset_reports_missing_or_corrupt_images_on_access(image_manifest, contents):
+    path = Path(image_manifest.data.root) / EUROSAT_IMAGE_SUBDIR / "River/0.png"
+    if contents is None:
+        path.unlink()
+    else:
+        path.write_bytes(contents)
+    # Construction reads only the manifest; images are opened on demand.
+    dataset = _EuroSATDataset(image_manifest, "train")
+    with pytest.raises(DataError, match="River[/\\\\]0.png"):
+        dataset[0]
 
 
 @pytest.mark.skip(reason="not implemented yet - owned by #3")

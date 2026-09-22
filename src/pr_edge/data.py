@@ -19,12 +19,13 @@ from __future__ import annotations
 import csv
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from .config import Config
 from .paths import resolve_path
@@ -259,6 +260,61 @@ def summarise_manifest(rows: list[dict[str, str]]) -> str:
         shares = " ".join(f"{100 * totals[s] / grand:>6.2f}%" for s in ("train", "val", "test"))
         lines.append(f"{'share':<{width}}  {shares} {100.0:>6.2f}%")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Manifest-backed image dataset
+# ---------------------------------------------------------------------------
+
+
+class _EuroSATDataset(Dataset):
+    """One manifest split, decoded lazily with an optional image transform.
+
+    This is internal plumbing for #3's statistics and loaders; the frozen
+    public interface remains unchanged. With no transform it returns RGB PIL
+    images, so statistics can use the original pixels. Each instance owns its
+    transform, allowing train augmentation and deterministic evaluation to
+    share the same image-loading code.
+    """
+
+    def __init__(
+        self,
+        cfg: Config,
+        split: str,
+        transform: Callable[[Image.Image], Image.Image | torch.Tensor] | None = None,
+    ) -> None:
+        if split not in SPLIT_FRACTIONS:
+            raise DataError(f"unknown dataset split: {split!r}")
+
+        # Validate the whole partition before filtering: validating only one
+        # split would both miss cross-split duplicates and fail stratification.
+        rows = read_manifest(cfg.data.manifest)
+        validate_manifest(rows)
+        image_root = resolve_path(cfg.data.root) / EUROSAT_IMAGE_SUBDIR
+        self.samples = [
+            (image_root / row["filepath"], CLASS_NAMES.index(row["label"]))
+            for row in rows
+            if row["split"] == split
+        ]
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int) -> tuple[Image.Image | torch.Tensor, int]:
+        path, label = self.samples[index]
+        image: Image.Image | torch.Tensor
+        try:
+            # Conversion loads the pixels into an independent RGB image. The
+            # source file closes before transforms run, including in workers.
+            with Image.open(path) as source:
+                image = source.convert("RGB")
+        except OSError as exc:
+            raise DataError(f"cannot read EuroSAT image: {path}") from exc
+
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, label
 
 
 # ---------------------------------------------------------------------------
