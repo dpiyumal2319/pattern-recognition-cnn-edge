@@ -322,6 +322,63 @@ class _EuroSATDataset(Dataset):
 
 
 # ---------------------------------------------------------------------------
+# Image transforms
+# ---------------------------------------------------------------------------
+
+
+class _RandomQuarterTurn:
+    """Rotate a square RGB image by a uniformly chosen multiple of 90 degrees.
+
+    PIL transpose permutes pixels exactly, without interpolation or padding.
+    Use torch's RNG so the existing set_seed and future DataLoader worker seeds
+    control augmentation. A module-level callable is picklable on Windows.
+    """
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        turns = int(torch.randint(4, ()).item())
+        if turns == 0:
+            return image
+        rotations = (Image.Transpose.ROTATE_90, Image.Transpose.ROTATE_180, Image.Transpose.ROTATE_270)
+        return image.transpose(rotations[turns - 1])
+
+
+def _build_transform(
+    cfg: Config, split: str, stats: dict[str, list[float]],
+) -> Callable[[Image.Image], torch.Tensor]:
+    """Resize, optionally augment training images, then scale and normalise.
+
+    The caller supplies compute_norm_stats(cfg)'s training-only statistics once
+    for all three splits. This helper never reads data or estimates statistics.
+    The frozen augment flag enables the fixed flip/quarter-turn policy; no
+    additional configuration keys or public entry points are introduced.
+    """
+    from torchvision import transforms
+
+    if split not in SPLIT_FRACTIONS:
+        raise DataError(f"unknown transform split: {split!r}")
+    size = cfg.data.input_size
+    if type(size) is not int or size <= 0:
+        raise DataError("data.input_size must be a positive integer")
+
+    operations = [transforms.Resize(
+        (size, size), interpolation=transforms.InterpolationMode.BILINEAR, antialias=True,
+    )]
+    if split == "train" and cfg.data.augment:
+        # Overhead land-cover labels are preserved by flips and quarter-turns.
+        # Each flip independently has probability 0.5 (torchvision's default).
+        operations.extend([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            _RandomQuarterTurn(),
+        ])
+    operations.extend([
+        transforms.ToTensor(),  # RGB uint8 -> float32 CHW in [0, 1]
+        transforms.Normalize(mean=stats["mean"], std=stats["std"]),
+    ])
+    return transforms.Compose(operations)
+
+
+# ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
 

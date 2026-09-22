@@ -47,6 +47,16 @@ modification times without decoding images; a changed source or malformed cache
 triggers recomputation. The cache's `_source` field is internal metadata;
 `compute_norm_stats(cfg)` returns only `mean` and `std`.
 
+The image transform helper resizes to `data.input_size` using bilinear
+interpolation, converts RGB pixels to a float tensor, and applies those training
+statistics. With `data.augment: true`, training images additionally receive
+independent horizontal/vertical flips (each with probability 0.5) and a uniform
+choice of 0, 90, 180 or 270 degree rotation. These preserve overhead land-cover
+labels. Validation/test transforms are deterministic; `augment: false` makes
+training preprocessing deterministic too. Random transforms use PyTorch's RNG
+and the project's existing seed setup. DataLoader factory integration follows
+in the next subtask of #3.
+
 ## Quickstart — Colab
 
 Colab is the canonical compute environment: every member gets the same free T4 regardless of their

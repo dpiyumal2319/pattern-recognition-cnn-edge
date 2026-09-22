@@ -11,7 +11,8 @@ Three tiers, none of which touch the network:
    file is in the repository, so these run on every future PR and permanently
    guard the partition every result in ``results/`` descends from.
 
-#3 owns the three loader tests still skipped at the bottom.
+#3 covers manifest-backed images, statistics and transforms below; the loader
+# integration check remains skipped until its factory is implemented.
 See docs/interfaces.md section 5 for the full test-file map.
 """
 
@@ -26,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 from PIL import Image
 
 from pr_edge.config import Config, DataConfig
@@ -36,7 +38,9 @@ from pr_edge.data import (
     SPLIT_FRACTIONS,
     DataError,
     _EuroSATDataset,
+    _RandomQuarterTurn,
     _allocate,
+    _build_transform,
     _stratified_split,
     compute_norm_stats,
     prepare_eurosat,
@@ -582,9 +586,129 @@ def test_prepare_data_cli_writes_and_reuses_norm_cache(norm_config, tmp_path):
     assert manifest.read_bytes() == original
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_augmentation_applies_to_train_only():
-    """Val and test must see deterministic transforms."""
+@pytest.fixture
+def patterned_image() -> Image.Image:
+    """An asymmetric image exposes rotations/flips that flat colours hide."""
+    return Image.fromarray(np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3))
+
+
+@pytest.fixture
+def transform_config() -> Config:
+    return Config(run_id="base", data=DataConfig(input_size=8))
+
+
+IDENTITY_STATS = {"mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0]}
+
+
+def test_augmentation_applies_to_train_only(transform_config, patterned_image):
+    train = _build_transform(transform_config, "train", IDENTITY_STATS)
+    val = _build_transform(transform_config, "val", IDENTITY_STATS)
+    test = _build_transform(transform_config, "test", IDENTITY_STATS)
+    original = val(patterned_image)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        outputs = [train(patterned_image) for _ in range(24)]
+        assert any(not torch.equal(output, original) for output in outputs)
+        for _ in range(4):
+            state = torch.get_rng_state().clone()
+            assert torch.equal(val(patterned_image), original)
+            assert torch.equal(test(patterned_image), original)
+            assert torch.equal(torch.get_rng_state(), state)
+
+
+def test_disabling_augmentation_matches_evaluation(transform_config, patterned_image):
+    cfg = replace(transform_config, data=replace(transform_config.data, augment=False))
+    train = _build_transform(cfg, "train", IDENTITY_STATS)
+    expected = _build_transform(cfg, "val", IDENTITY_STATS)(patterned_image)
+    state = torch.get_rng_state().clone()
+    for _ in range(4):
+        assert torch.equal(train(patterned_image), expected)
+    assert torch.equal(torch.get_rng_state(), state)
+
+
+@pytest.mark.parametrize("turns", [0, 1, 2, 3])
+def test_quarter_turns_are_exact_pixel_permutations(patterned_image, monkeypatch, turns):
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(turns))
+    before = np.array(patterned_image)
+    actual = _RandomQuarterTurn()(patterned_image)
+    np.testing.assert_array_equal(np.asarray(actual), np.rot90(before, turns))
+    np.testing.assert_array_equal(np.asarray(patterned_image), before)
+
+
+@pytest.mark.parametrize("horizontal,vertical", [(True, False), (False, True), (True, True)])
+def test_training_flips_preserve_pixels(transform_config, patterned_image, monkeypatch, horizontal, vertical):
+    # Force each flip independently and suppress rotation to check direction.
+    draws = iter([0.0 if horizontal else 1.0, 0.0 if vertical else 1.0])
+    monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.tensor([next(draws)]))
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(0))
+    result = _build_transform(transform_config, "train", IDENTITY_STATS)(patterned_image)
+    expected = np.array(patterned_image)
+    if horizontal:
+        expected = np.flip(expected, axis=1)
+    if vertical:
+        expected = np.flip(expected, axis=0)
+    np.testing.assert_allclose(result.numpy(), expected.transpose(2, 0, 1) / 255, atol=1e-7)
+
+
+def test_augmentation_sequence_repeats_with_seed(transform_config, patterned_image):
+    transform = _build_transform(transform_config, "train", IDENTITY_STATS)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        first = [transform(patterned_image) for _ in range(8)]
+        torch.manual_seed(42)
+        second = [transform(patterned_image) for _ in range(8)]
+    assert all(torch.equal(a, b) for a, b in zip(first, second))
+    assert any(not torch.equal(first[0], image) for image in first[1:])
+
+
+@pytest.mark.parametrize("split", ["train", "val", "test"])
+@pytest.mark.parametrize("size", [64, 224])
+def test_transforms_resize_and_use_supplied_training_statistics(norm_config, split, size):
+    stats = compute_norm_stats(norm_config)
+    cfg = replace(norm_config, data=replace(norm_config.data, input_size=size))
+    image = Image.new("RGB", (8, 8), (0, 64, 255))
+    with torch.random.fork_rng(devices=[]):
+        actual = _build_transform(cfg, split, stats)(image)
+    assert actual.shape == (3, size, size)
+    assert actual.dtype == torch.float32
+    # For this training fixture: (colour / 255 - mean) / std = [-1, -1, 1].
+    expected = torch.tensor([-1.0, -1.0, 1.0]).view(3, 1, 1).expand_as(actual)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_transform_works_with_manifest_dataset(norm_config):
+    stats = compute_norm_stats(norm_config)
+    transform = _build_transform(norm_config, "val", stats)
+    dataset = _EuroSATDataset(norm_config, "val", transform=transform)
+    first, label = dataset[0]
+    second, repeated_label = dataset[0]
+    assert first.shape == (3, norm_config.data.input_size, norm_config.data.input_size)
+    assert torch.equal(first, second)
+    assert label == repeated_label == CLASS_NAMES.index("River")
+
+
+def test_transform_is_picklable_for_windows_workers(transform_config, patterned_image):
+    import pickle
+
+    transform = _build_transform(transform_config, "train", IDENTITY_STATS)
+    restored = pickle.loads(pickle.dumps(transform))
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        expected = transform(patterned_image)
+        torch.manual_seed(42)
+        assert torch.equal(restored(patterned_image), expected)
+
+
+@pytest.mark.parametrize("size", [0, -1, 64.5, True])
+def test_transforms_reject_invalid_input_size(transform_config, size):
+    cfg = replace(transform_config, data=replace(transform_config.data, input_size=size))
+    with pytest.raises(DataError, match="input_size"):
+        _build_transform(cfg, "train", IDENTITY_STATS)
+
+
+def test_transforms_reject_unknown_split(transform_config):
+    with pytest.raises(DataError, match="unknown transform split"):
+        _build_transform(transform_config, "validation", IDENTITY_STATS)
 
 
 @pytest.mark.skip(reason="not implemented yet - owned by #3")
