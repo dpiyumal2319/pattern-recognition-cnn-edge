@@ -18,9 +18,13 @@ See docs/interfaces.md section 5 for the full test-file map.
 from __future__ import annotations
 
 import csv
+import json
+import os
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -34,6 +38,7 @@ from pr_edge.data import (
     _EuroSATDataset,
     _allocate,
     _stratified_split,
+    compute_norm_stats,
     prepare_eurosat,
     read_manifest,
     validate_manifest,
@@ -68,7 +73,9 @@ def _config(root: Path, manifest: Path, seed: int = 42) -> Config:
     return Config(
         run_id="base",
         seed=seed,
-        data=DataConfig(root=str(root), manifest=str(manifest)),
+        data=DataConfig(
+            root=str(root), manifest=str(manifest), norm_stats=str(root / "norm_stats.json"),
+        ),
     )
 
 
@@ -440,9 +447,139 @@ def test_dataset_reports_missing_or_corrupt_images_on_access(image_manifest, con
         dataset[0]
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_norm_stats_use_the_training_split_only():
-    """Computing them over the full dataset leaks test statistics."""
+@pytest.fixture
+def norm_config(image_manifest: Config) -> Config:
+    """Equal counts of two colours give hand-computable population statistics."""
+    for index, (path, _) in enumerate(_EuroSATDataset(image_manifest, "train").samples):
+        colour = (0, 64, 255) if index % 2 == 0 else (255, 192, 0)
+        Image.new("RGB", (8, 8), colour).save(path)
+    return image_manifest
+
+
+def test_norm_stats_use_the_training_split_only(norm_config):
+    # Holdout images need not even be decodable to compute training statistics.
+    for split in ("val", "test"):
+        for path, _ in _EuroSATDataset(norm_config, split).samples:
+            path.write_bytes(b"held-out pixels must not be read")
+    stats = compute_norm_stats(norm_config)
+    assert set(stats) == {"mean", "std"}
+    assert stats["mean"] == pytest.approx([0.5, 128 / 255, 0.5])
+    assert stats["std"] == pytest.approx([0.5, 64 / 255, 0.5])
+
+
+def test_norm_stats_weight_pixels_instead_of_images(norm_config):
+    dataset = _EuroSATDataset(norm_config, "train")
+    Image.new("RGB", (16, 8), (0, 64, 255)).save(dataset.samples[0][0])
+    # The first colour now occupies 15 image-equivalents, the other 14.
+    stats = compute_norm_stats(norm_config)
+    assert stats["mean"] == pytest.approx([14 / 29, (15 * 64 + 14 * 192) / (29 * 255), 15 / 29])
+    spread = np.sqrt(15 * 14) / 29
+    assert stats["std"] == pytest.approx([spread, spread * 128 / 255, spread])
+
+
+def test_norm_stats_cache_avoids_image_decoding_and_rewriting(norm_config, monkeypatch):
+    first = compute_norm_stats(norm_config)
+    cache = Path(norm_config.data.norm_stats)
+    original = cache.read_bytes()
+    modified = cache.stat().st_mtime_ns
+
+    def no_decode(*args, **kwargs):
+        pytest.fail("cache hit must not decode any image")
+
+    monkeypatch.setattr(Image, "open", no_decode)
+    cfg = replace(norm_config, seed=123, data=replace(
+        norm_config.data, input_size=224, batch_size=1, augment=False,
+    ))
+    assert compute_norm_stats(cfg) == first
+    assert cache.read_bytes() == original
+    assert cache.stat().st_mtime_ns == modified
+
+
+def test_norm_stats_refresh_after_training_image_changes(norm_config):
+    before = compute_norm_stats(norm_config)
+    path = _EuroSATDataset(norm_config, "train").samples[0][0]
+    previous = path.stat()
+    Image.new("RGB", (8, 8), (255, 192, 0)).save(path)
+    # Explicit time change avoids depending on the filesystem clock resolution.
+    os.utime(path, ns=(previous.st_atime_ns, previous.st_mtime_ns + 1_000_000_000))
+    after = compute_norm_stats(norm_config)
+    assert after["mean"][0] == pytest.approx(15 / 28)
+    assert after != before
+
+
+def test_norm_stats_refresh_after_manifest_reassigns_training_images(norm_config):
+    before = compute_norm_stats(norm_config)
+    rows = read_manifest(norm_config.data.manifest)
+    train = next(row for row in rows if row["label"] == "River" and row["split"] == "train")
+    val = next(row for row in rows if row["label"] == "River" and row["split"] == "val")
+    train["split"], val["split"] = "val", "train"
+    with Path(norm_config.data.manifest).open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("filepath", "label", "split"))
+        writer.writeheader()
+        writer.writerows(rows)
+    assert compute_norm_stats(norm_config) != before
+
+
+@pytest.mark.parametrize("bad_cache", [
+    "{incomplete", "[]", '{"mean": [0, 0, 0], "std": [1, 1, 1]}',
+])
+def test_norm_stats_rebuild_malformed_or_unversioned_caches(norm_config, bad_cache):
+    cache = Path(norm_config.data.norm_stats)
+    cache.write_text(bad_cache, encoding="utf-8")
+    assert compute_norm_stats(norm_config)["mean"] == pytest.approx([0.5, 128 / 255, 0.5])
+    assert "_source" in json.loads(cache.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("mean", [float("nan"), 0.5, 0.5]), ("mean", [True, 0.5, 0.5]),
+    ("mean", [2, 0.5, 0.5]), ("std", [0, 0.5, 0.5]), ("std", [0.5]),
+])
+def test_norm_stats_rebuild_invalid_cached_values(norm_config, field, value):
+    expected = compute_norm_stats(norm_config)
+    cache = Path(norm_config.data.norm_stats)
+    cached = json.loads(cache.read_text(encoding="utf-8"))
+    cached[field] = value
+    cache.write_text(json.dumps(cached), encoding="utf-8")
+    assert compute_norm_stats(norm_config) == expected
+
+
+def test_norm_stats_reject_zero_variance_without_writing_cache(norm_config):
+    for path, _ in _EuroSATDataset(norm_config, "train").samples:
+        Image.new("RGB", (8, 8), (64, 64, 64)).save(path)
+    with pytest.raises(DataError, match="zero-variance"):
+        compute_norm_stats(norm_config)
+    assert not Path(norm_config.data.norm_stats).exists()
+
+
+def test_norm_stats_resolve_nested_cache_relative_to_project(norm_config, tmp_path, monkeypatch):
+    from pr_edge import paths
+
+    monkeypatch.setattr(paths, "PROJECT_ROOT", tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    cfg = replace(norm_config, data=replace(
+        norm_config.data, root=".", manifest="splits.csv", norm_stats="cache/stats.json",
+    ))
+    compute_norm_stats(cfg)
+    assert (tmp_path / "cache/stats.json").is_file()
+    assert not (elsewhere / "cache").exists()
+
+
+def test_prepare_data_cli_writes_and_reuses_norm_cache(norm_config, tmp_path):
+    from pr_edge.config import dump_config
+    from scripts.prepare_data import main
+
+    config_file = tmp_path / "base.yaml"
+    dump_config(norm_config, config_file)
+    manifest = Path(norm_config.data.manifest)
+    original = manifest.read_bytes()
+    assert main(["--config", str(config_file)]) == 0
+    cache = Path(norm_config.data.norm_stats)
+    cached = cache.read_bytes()
+    assert main(["--config", str(config_file)]) == 0
+    assert cache.read_bytes() == cached
+    assert manifest.read_bytes() == original
 
 
 @pytest.mark.skip(reason="not implemented yet - owned by #3")

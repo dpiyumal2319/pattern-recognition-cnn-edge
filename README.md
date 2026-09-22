@@ -38,6 +38,15 @@ python scripts/run_experiment.py --config configs/model_b.yaml
 python scripts/build_tables.py --all
 ```
 
+Data preparation caches RGB channel means and population standard deviations in
+`data.norm_stats` (default `data/norm_stats.json`). They come exclusively from the
+manifest's training images, using native-resolution pixels scaled to `[0, 1]`
+before resizing or augmentation. The same statistics therefore serve both 64
+and 224 input sizes. Cache validation checks training paths, file sizes and
+modification times without decoding images; a changed source or malformed cache
+triggers recomputation. The cache's `_source` field is internal metadata;
+`compute_norm_stats(cfg)` returns only `mean` and `std`.
+
 ## Quickstart — Colab
 
 Colab is the canonical compute environment: every member gets the same free T4 regardless of their

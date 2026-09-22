@@ -34,15 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     manifest = prepare_eurosat(cfg, force=args.force)
     print(f"[data] manifest written to {manifest}")
 
-    # Normalisation statistics are #3's, and this script predates them. Until
-    # that lands, writing the manifest is the whole job and the script must
-    # still exit 0 - otherwise #2's own acceptance criterion cannot pass.
-    try:
-        stats = compute_norm_stats(cfg)
-    except NotImplementedError:
-        print("[data] normalisation stats pending #3 - manifest is complete on its own")
-    else:
-        print(f"[data] train-split normalisation stats: {stats}")
+    stats = compute_norm_stats(cfg)
+    print(f"[data] train-split normalisation stats: {stats}")
     return 0
 
 
