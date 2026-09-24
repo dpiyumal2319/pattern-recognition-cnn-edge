@@ -380,6 +380,25 @@ def _build_transform(
     return transforms.Compose(operations)
 
 
+def _distinct_augmentation(
+    dataset: _EuroSATDataset, index: int, reference: torch.Tensor, attempts: int = 16,
+) -> torch.Tensor:
+    """Draw an augmented view of one sample that differs from ``reference``.
+
+    With no flip and no quarter-turn (a 1-in-16 draw) the policy returns the
+    image unchanged, and an "Augmented" panel identical to its original reads
+    as a bug in the report. Redrawing stays deterministic under the caller's
+    seed. A symmetric image may have no distinct view at all, so give up after
+    ``attempts`` draws rather than looping forever.
+    """
+    changed, _ = dataset[index]
+    for _ in range(attempts - 1):
+        if not torch.equal(changed, reference):
+            break
+        changed, _ = dataset[index]
+    return changed
+
+
 def _write_sample_grid(
     cfg: Config,
     out: str | Path = REPORT_DIR / "figures" / "data_augmentation_grid.png",
@@ -391,7 +410,10 @@ def _write_sample_grid(
     denormalised solely for display. The local RNG context keeps report figure
     generation from changing a subsequent experiment's random state.
     """
-    import matplotlib.pyplot as plt
+    # The object-oriented Figure API never selects a GUI backend. pyplot picks
+    # Tk on Windows, which intermittently fails to initialise Tcl in tests and
+    # is pointless for a file that is only ever saved.
+    from matplotlib.figure import Figure
 
     stats = compute_norm_stats(cfg)
     original = _EuroSATDataset(cfg, "train", transform=_build_transform(cfg, "val", stats))
@@ -405,9 +427,8 @@ def _write_sample_grid(
     labels = sorted(first_by_label)
     pairs_per_row = 2
     rows = math.ceil(len(labels) / pairs_per_row)
-    figure, axes = plt.subplots(
-        rows, pairs_per_row * 2, figsize=(10, 2.45 * rows), squeeze=False,
-    )
+    figure = Figure(figsize=(10, 2.45 * rows))
+    axes = figure.subplots(rows, pairs_per_row * 2, squeeze=False)
     mean = torch.tensor(stats["mean"], dtype=torch.float32).view(3, 1, 1)
     std = torch.tensor(stats["std"], dtype=torch.float32).view(3, 1, 1)
 
@@ -421,7 +442,7 @@ def _write_sample_grid(
             row, pair = divmod(position, pairs_per_row)
             index = first_by_label[label]
             plain, _ = original[index]
-            changed, _ = augmented[index]
+            changed = _distinct_augmentation(augmented, index, plain)
             for column_offset, (image, heading) in enumerate(
                 ((plain, "Original"), (changed, "Augmented"))
             ):
@@ -438,7 +459,6 @@ def _write_sample_grid(
     out = resolve_path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(out, dpi=200, bbox_inches="tight")
-    plt.close(figure)
     return out
 
 
@@ -659,6 +679,10 @@ def get_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:
             shuffle=(split == "train"),
             drop_last=False,
             generator=generator,
+            # Keep workers alive between epochs. Otherwise every epoch pays
+            # worker start-up (~4 s per epoch with spawn on Windows) inside the
+            # timed training pass, inflating the graded epoch_seconds column.
+            persistent_workers=cfg.data.num_workers > 0,
             worker_init_fn=_seed_worker,
         ))
     return loaders[0], loaders[1], loaders[2]

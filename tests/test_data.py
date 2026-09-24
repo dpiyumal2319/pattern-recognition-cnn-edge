@@ -12,7 +12,7 @@ Three tiers, none of which touch the network:
    guard the partition every result in ``results/`` descends from.
 
 #3 covers manifest-backed images, statistics, transforms and loader integration
-# below, including worker processes with Windows-compatible spawn semantics.
+below, including worker processes with Windows-compatible spawn semantics.
 See docs/interfaces.md section 5 for the full test-file map.
 """
 
@@ -40,6 +40,7 @@ from pr_edge.data import (
     _RandomQuarterTurn,
     _allocate,
     _build_transform,
+    _distinct_augmentation,
     _stratified_split,
     _write_sample_grid,
     compute_norm_stats,
@@ -860,3 +861,39 @@ def test_sample_grid_does_not_read_holdout_images(norm_config, tmp_path):
         for path, _ in _EuroSATDataset(norm_config, split).samples:
             path.write_bytes(b"holdout image must not be decoded for the training grid")
     assert _write_sample_grid(norm_config, tmp_path / "grid.png").is_file()
+
+
+def test_sample_grid_redraws_an_identity_augmentation(loader_config, monkeypatch):
+    # Force no flips, then a first draw of zero turns and a second of one turn:
+    # the identity view must be rejected in favour of the rotated one.
+    monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.tensor([1.0]))
+    turns = iter([0, 1])
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(next(turns)))
+    stats = compute_norm_stats(loader_config)
+    plain, _ = _EuroSATDataset(
+        loader_config, "train", transform=_build_transform(loader_config, "val", stats),
+    )[0]
+    augmented = _EuroSATDataset(
+        loader_config, "train", transform=_build_transform(loader_config, "train", stats),
+    )
+    changed = _distinct_augmentation(augmented, 0, plain)
+    assert not torch.equal(changed, plain)
+    torch.testing.assert_close(changed, torch.rot90(plain, 1, dims=(1, 2)))
+
+
+def test_sample_grid_gives_up_on_images_with_no_distinct_view(norm_config):
+    # Flat colours look identical under every flip and turn; this must terminate.
+    stats = compute_norm_stats(norm_config)
+    augmented = _EuroSATDataset(
+        norm_config, "train", transform=_build_transform(norm_config, "train", stats),
+    )
+    plain, _ = _EuroSATDataset(
+        norm_config, "train", transform=_build_transform(norm_config, "val", stats),
+    )[0]
+    assert torch.equal(_distinct_augmentation(augmented, 0, plain, attempts=4), plain)
+
+
+@pytest.mark.parametrize("workers,persistent", [(0, False), (2, True)])
+def test_workers_persist_so_startup_stays_out_of_epoch_time(loader_config, workers, persistent):
+    cfg = replace(loader_config, data=replace(loader_config.data, num_workers=workers))
+    assert all(loader.persistent_workers is persistent for loader in get_dataloaders(cfg))
