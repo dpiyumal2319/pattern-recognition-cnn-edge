@@ -24,4 +24,4 @@ Closes #
 - [ ] Artifacts match the contract in `AGENTS.md` section 3
 - [ ] Slide anchor for this issue was present in `docs/slides/` before any methodology was written
 - [ ] No AI co-authorship trailers in any commit
-- [ ] Tests pass (if this issue added or touched any)
+- [ ] New or changed behaviour has tests in this PR, and the full `pytest` suite passes
