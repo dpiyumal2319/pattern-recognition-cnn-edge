@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Download EuroSAT and write the stratified 70/15/15 split manifest.
+"""Prepare EuroSAT, training-only normalisation and the report sample grid.
 
     python scripts/prepare_data.py --config configs/base.yaml [--force]
 
@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pr_edge.config import load_config  # noqa: E402
-from pr_edge.data import compute_norm_stats, prepare_eurosat  # noqa: E402
+from pr_edge.data import _write_sample_grid, compute_norm_stats, prepare_eurosat  # noqa: E402
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -34,15 +34,10 @@ def main(argv: list[str] | None = None) -> int:
     manifest = prepare_eurosat(cfg, force=args.force)
     print(f"[data] manifest written to {manifest}")
 
-    # Normalisation statistics are #3's, and this script predates them. Until
-    # that lands, writing the manifest is the whole job and the script must
-    # still exit 0 - otherwise #2's own acceptance criterion cannot pass.
-    try:
-        stats = compute_norm_stats(cfg)
-    except NotImplementedError:
-        print("[data] normalisation stats pending #3 - manifest is complete on its own")
-    else:
-        print(f"[data] train-split normalisation stats: {stats}")
+    stats = compute_norm_stats(cfg)
+    print(f"[data] train-split normalisation stats: {stats}")
+    figure = _write_sample_grid(cfg)
+    print(f"[data] sample grid written to {figure}")
     return 0
 
 

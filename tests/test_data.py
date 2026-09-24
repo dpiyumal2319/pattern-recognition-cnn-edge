@@ -11,17 +11,23 @@ Three tiers, none of which touch the network:
    file is in the repository, so these run on every future PR and permanently
    guard the partition every result in ``results/`` descends from.
 
-#3 owns the three loader tests still skipped at the bottom.
+#3 covers manifest-backed images, statistics, transforms and loader integration
+below, including worker processes with Windows-compatible spawn semantics.
 See docs/interfaces.md section 5 for the full test-file map.
 """
 
 from __future__ import annotations
 
 import csv
+import json
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pytest
+import torch
+from PIL import Image
 
 from pr_edge.config import Config, DataConfig
 from pr_edge.data import (
@@ -30,8 +36,15 @@ from pr_edge.data import (
     EXPECTED_TOTAL,
     SPLIT_FRACTIONS,
     DataError,
+    _EuroSATDataset,
+    _RandomQuarterTurn,
     _allocate,
+    _build_transform,
+    _distinct_augmentation,
     _stratified_split,
+    _write_sample_grid,
+    compute_norm_stats,
+    get_dataloaders,
     prepare_eurosat,
     read_manifest,
     validate_manifest,
@@ -66,7 +79,9 @@ def _config(root: Path, manifest: Path, seed: int = 42) -> Config:
     return Config(
         run_id="base",
         seed=seed,
-        data=DataConfig(root=str(root), manifest=str(manifest)),
+        data=DataConfig(
+            root=str(root), manifest=str(manifest), norm_stats=str(root / "norm_stats.json"),
+        ),
     )
 
 
@@ -335,16 +350,550 @@ def test_committed_manifest_has_unix_line_endings():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_norm_stats_use_the_training_split_only():
-    """Computing them over the full dataset leaks test statistics."""
+@pytest.fixture
+def image_manifest(tmp_path: Path) -> Config:
+    """Decodable images with known pixels and an explicit 70/15/15 manifest.
+
+    Use nonconsecutive class indices in reverse order to catch accidental
+    relabelling or directory-based sorting. PNG keeps pixel assertions exact.
+    """
+    rows = []
+    for name in ("River", "Forest"):
+        directory = tmp_path / EUROSAT_IMAGE_SUBDIR / name
+        directory.mkdir(parents=True)
+        for index in range(20):
+            relative = f"{name}/{index}.png"
+            Image.new("RGB", (8, 8), (index, CLASS_NAMES.index(name), 100)).save(
+                tmp_path / EUROSAT_IMAGE_SUBDIR / relative
+            )
+            rows.append({
+                "filepath": relative,
+                "label": name,
+                "split": "train" if index < 14 else "val" if index < 17 else "test",
+            })
+    # Files absent from the manifest must never enter a split implicitly.
+    Image.new("RGB", (8, 8)).save(directory / "unlisted.png")
+    manifest = tmp_path / "splits.csv"
+    with manifest.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("filepath", "label", "split"))
+        writer.writeheader()
+        writer.writerows(rows)
+    return _config(tmp_path, manifest)
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_augmentation_applies_to_train_only():
-    """Val and test must see deterministic transforms."""
+@pytest.mark.parametrize("split,indices", [
+    ("train", range(14)), ("val", range(14, 17)), ("test", range(17, 20)),
+])
+def test_dataset_loads_exact_manifest_members_and_labels(image_manifest, split, indices):
+    manifest = Path(image_manifest.data.manifest)
+    original = manifest.read_bytes()
+    dataset = _EuroSATDataset(image_manifest, split)
+    expected = [
+        (index, CLASS_NAMES.index(name))
+        for name in ("River", "Forest")
+        for index in indices
+    ]
+    assert len(dataset) == len(expected)
+    for position, (pixel, class_index) in enumerate(expected):
+        image, label = dataset[position]
+        assert image.mode == "RGB"
+        assert image.size == (8, 8)
+        assert image.getpixel((0, 0)) == (pixel, class_index, 100)
+        assert label == class_index
+    assert manifest.read_bytes() == original
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_input_size_switches_to_224_without_a_second_pipeline():
-    """The SOTA harness (#19) needs this for the resolution ablation."""
+def test_dataset_resolves_config_paths_from_project_root(image_manifest, monkeypatch, tmp_path):
+    from pr_edge import paths
+
+    monkeypatch.setattr(paths, "PROJECT_ROOT", tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    cfg = _config(Path("."), Path("splits.csv"))
+    image, label = _EuroSATDataset(cfg, "val")[0]
+    assert image.getpixel((0, 0)) == (14, CLASS_NAMES.index("River"), 100)
+    assert label == CLASS_NAMES.index("River")
+
+
+def test_dataset_converts_to_rgb_before_applying_transform(image_manifest):
+    from torchvision.transforms import ToTensor
+
+    path = Path(image_manifest.data.root) / EUROSAT_IMAGE_SUBDIR / "River/0.png"
+    Image.new("L", (8, 8), 255).save(path)
+    image, label = _EuroSATDataset(image_manifest, "train", transform=ToTensor())[0]
+    assert tuple(image.shape) == (3, 8, 8)
+    assert image.eq(1).all()
+    assert label == CLASS_NAMES.index("River")
+
+
+def test_dataset_rejects_duplicates_across_splits(image_manifest):
+    manifest = Path(image_manifest.data.manifest)
+    with manifest.open("a", encoding="utf-8", newline="") as handle:
+        csv.writer(handle).writerow(("River/0.png", "River", "test"))
+    with pytest.raises(DataError, match="duplicate"):
+        _EuroSATDataset(image_manifest, "train")
+
+
+def test_dataset_rejects_unknown_split(image_manifest):
+    with pytest.raises(DataError, match="unknown dataset split"):
+        _EuroSATDataset(image_manifest, "validation")
+
+
+@pytest.mark.parametrize("contents", [None, b"not an image"])
+def test_dataset_reports_missing_or_corrupt_images_on_access(image_manifest, contents):
+    path = Path(image_manifest.data.root) / EUROSAT_IMAGE_SUBDIR / "River/0.png"
+    if contents is None:
+        path.unlink()
+    else:
+        path.write_bytes(contents)
+    # Construction reads only the manifest; images are opened on demand.
+    dataset = _EuroSATDataset(image_manifest, "train")
+    with pytest.raises(DataError, match="River[/\\\\]0.png"):
+        dataset[0]
+
+
+@pytest.fixture
+def norm_config(image_manifest: Config) -> Config:
+    """Equal counts of two colours give hand-computable population statistics."""
+    for index, (path, _) in enumerate(_EuroSATDataset(image_manifest, "train").samples):
+        colour = (0, 64, 255) if index % 2 == 0 else (255, 192, 0)
+        Image.new("RGB", (8, 8), colour).save(path)
+    return image_manifest
+
+
+def test_norm_stats_use_the_training_split_only(norm_config):
+    # Holdout images need not even be decodable to compute training statistics.
+    for split in ("val", "test"):
+        for path, _ in _EuroSATDataset(norm_config, split).samples:
+            path.write_bytes(b"held-out pixels must not be read")
+    stats = compute_norm_stats(norm_config)
+    assert set(stats) == {"mean", "std"}
+    assert stats["mean"] == pytest.approx([0.5, 128 / 255, 0.5])
+    assert stats["std"] == pytest.approx([0.5, 64 / 255, 0.5])
+
+
+def test_norm_stats_weight_pixels_instead_of_images(norm_config):
+    dataset = _EuroSATDataset(norm_config, "train")
+    Image.new("RGB", (16, 8), (0, 64, 255)).save(dataset.samples[0][0])
+    # The first colour now occupies 15 image-equivalents, the other 14.
+    stats = compute_norm_stats(norm_config)
+    assert stats["mean"] == pytest.approx([14 / 29, (15 * 64 + 14 * 192) / (29 * 255), 15 / 29])
+    spread = np.sqrt(15 * 14) / 29
+    assert stats["std"] == pytest.approx([spread, spread * 128 / 255, spread])
+
+
+def test_norm_stats_cache_avoids_image_decoding_and_rewriting(norm_config, monkeypatch):
+    first = compute_norm_stats(norm_config)
+    cache = Path(norm_config.data.norm_stats)
+    original = cache.read_bytes()
+    modified = cache.stat().st_mtime_ns
+
+    def no_decode(*args, **kwargs):
+        pytest.fail("cache hit must not decode any image")
+
+    monkeypatch.setattr(Image, "open", no_decode)
+    cfg = replace(norm_config, seed=123, data=replace(
+        norm_config.data, input_size=224, batch_size=1, augment=False,
+    ))
+    assert compute_norm_stats(cfg) == first
+    assert cache.read_bytes() == original
+    assert cache.stat().st_mtime_ns == modified
+
+
+def test_norm_stats_refresh_after_training_image_changes(norm_config):
+    before = compute_norm_stats(norm_config)
+    path = _EuroSATDataset(norm_config, "train").samples[0][0]
+    # A different size changes both source metadata and pixel weighting.
+    Image.new("RGB", (16, 8), (255, 192, 0)).save(path)
+    after = compute_norm_stats(norm_config)
+    assert after["mean"][0] == pytest.approx(16 / 29)
+    assert after != before
+
+
+def test_norm_stats_refresh_after_manifest_reassigns_training_images(norm_config):
+    before = compute_norm_stats(norm_config)
+    rows = read_manifest(norm_config.data.manifest)
+    train = next(row for row in rows if row["label"] == "River" and row["split"] == "train")
+    val = next(row for row in rows if row["label"] == "River" and row["split"] == "val")
+    train["split"], val["split"] = "val", "train"
+    with Path(norm_config.data.manifest).open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("filepath", "label", "split"))
+        writer.writeheader()
+        writer.writerows(rows)
+    assert compute_norm_stats(norm_config) != before
+
+
+@pytest.mark.parametrize("bad_cache", [
+    "{incomplete", "[]", '{"mean": [0, 0, 0], "std": [1, 1, 1]}',
+])
+def test_norm_stats_rebuild_malformed_or_unversioned_caches(norm_config, bad_cache):
+    cache = Path(norm_config.data.norm_stats)
+    cache.write_text(bad_cache, encoding="utf-8")
+    assert compute_norm_stats(norm_config)["mean"] == pytest.approx([0.5, 128 / 255, 0.5])
+    assert "_source" in json.loads(cache.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("mean", [float("nan"), 0.5, 0.5]), ("mean", [True, 0.5, 0.5]),
+    ("mean", [2, 0.5, 0.5]), ("std", [0, 0.5, 0.5]), ("std", [0.5]),
+])
+def test_norm_stats_rebuild_invalid_cached_values(norm_config, field, value):
+    expected = compute_norm_stats(norm_config)
+    cache = Path(norm_config.data.norm_stats)
+    cached = json.loads(cache.read_text(encoding="utf-8"))
+    cached[field] = value
+    cache.write_text(json.dumps(cached), encoding="utf-8")
+    assert compute_norm_stats(norm_config) == expected
+
+
+def test_norm_stats_reject_zero_variance_without_writing_cache(norm_config):
+    for path, _ in _EuroSATDataset(norm_config, "train").samples:
+        Image.new("RGB", (8, 8), (64, 64, 64)).save(path)
+    with pytest.raises(DataError, match="zero-variance"):
+        compute_norm_stats(norm_config)
+    assert not Path(norm_config.data.norm_stats).exists()
+
+
+def test_norm_stats_resolve_nested_cache_relative_to_project(norm_config, tmp_path, monkeypatch):
+    from pr_edge import paths
+
+    monkeypatch.setattr(paths, "PROJECT_ROOT", tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    cfg = replace(norm_config, data=replace(
+        norm_config.data, root=".", manifest="splits.csv", norm_stats="cache/stats.json",
+    ))
+    compute_norm_stats(cfg)
+    assert (tmp_path / "cache/stats.json").is_file()
+    assert not (elsewhere / "cache").exists()
+
+
+def test_prepare_data_cli_writes_and_reuses_norm_cache(norm_config, tmp_path, monkeypatch):
+    from pr_edge.config import dump_config
+    from scripts import prepare_data
+
+    config_file = tmp_path / "base.yaml"
+    dump_config(norm_config, config_file)
+    monkeypatch.setattr(
+        prepare_data, "_write_sample_grid",
+        lambda cfg: _write_sample_grid(cfg, tmp_path / "sample_grid.png"),
+    )
+    manifest = Path(norm_config.data.manifest)
+    original = manifest.read_bytes()
+    assert prepare_data.main(["--config", str(config_file)]) == 0
+    cache = Path(norm_config.data.norm_stats)
+    cached = cache.read_bytes()
+    assert prepare_data.main(["--config", str(config_file)]) == 0
+    assert cache.read_bytes() == cached
+    assert manifest.read_bytes() == original
+    assert (tmp_path / "sample_grid.png").is_file()
+
+
+@pytest.fixture
+def patterned_image() -> Image.Image:
+    """An asymmetric image exposes rotations/flips that flat colours hide."""
+    return Image.fromarray(np.arange(8 * 8 * 3, dtype=np.uint8).reshape(8, 8, 3))
+
+
+@pytest.fixture
+def transform_config() -> Config:
+    return Config(run_id="base", data=DataConfig(input_size=8))
+
+
+IDENTITY_STATS = {"mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0]}
+
+
+def test_augmentation_applies_to_train_only(transform_config, patterned_image):
+    train = _build_transform(transform_config, "train", IDENTITY_STATS)
+    val = _build_transform(transform_config, "val", IDENTITY_STATS)
+    test = _build_transform(transform_config, "test", IDENTITY_STATS)
+    original = val(patterned_image)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        outputs = [train(patterned_image) for _ in range(24)]
+        assert any(not torch.equal(output, original) for output in outputs)
+        for _ in range(4):
+            state = torch.get_rng_state().clone()
+            assert torch.equal(val(patterned_image), original)
+            assert torch.equal(test(patterned_image), original)
+            assert torch.equal(torch.get_rng_state(), state)
+
+
+def test_disabling_augmentation_matches_evaluation(transform_config, patterned_image):
+    cfg = replace(transform_config, data=replace(transform_config.data, augment=False))
+    train = _build_transform(cfg, "train", IDENTITY_STATS)
+    expected = _build_transform(cfg, "val", IDENTITY_STATS)(patterned_image)
+    state = torch.get_rng_state().clone()
+    for _ in range(4):
+        assert torch.equal(train(patterned_image), expected)
+    assert torch.equal(torch.get_rng_state(), state)
+
+
+@pytest.mark.parametrize("turns", [0, 1, 2, 3])
+def test_quarter_turns_are_exact_pixel_permutations(patterned_image, monkeypatch, turns):
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(turns))
+    before = np.array(patterned_image)
+    actual = _RandomQuarterTurn()(patterned_image)
+    np.testing.assert_array_equal(np.asarray(actual), np.rot90(before, turns))
+    np.testing.assert_array_equal(np.asarray(patterned_image), before)
+
+
+@pytest.mark.parametrize("horizontal,vertical", [(True, False), (False, True), (True, True)])
+def test_training_flips_preserve_pixels(transform_config, patterned_image, monkeypatch, horizontal, vertical):
+    # Force each flip independently and suppress rotation to check direction.
+    draws = iter([0.0 if horizontal else 1.0, 0.0 if vertical else 1.0])
+    monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.tensor([next(draws)]))
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(0))
+    result = _build_transform(transform_config, "train", IDENTITY_STATS)(patterned_image)
+    expected = np.array(patterned_image)
+    if horizontal:
+        expected = np.flip(expected, axis=1)
+    if vertical:
+        expected = np.flip(expected, axis=0)
+    np.testing.assert_allclose(result.numpy(), expected.transpose(2, 0, 1) / 255, atol=1e-7)
+
+
+def test_augmentation_sequence_repeats_with_seed(transform_config, patterned_image):
+    transform = _build_transform(transform_config, "train", IDENTITY_STATS)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        first = [transform(patterned_image) for _ in range(8)]
+        torch.manual_seed(42)
+        second = [transform(patterned_image) for _ in range(8)]
+    assert all(torch.equal(a, b) for a, b in zip(first, second))
+    assert any(not torch.equal(first[0], image) for image in first[1:])
+
+
+@pytest.mark.parametrize("split", ["train", "val", "test"])
+@pytest.mark.parametrize("size", [64, 224])
+def test_transforms_resize_and_use_supplied_training_statistics(norm_config, split, size):
+    stats = compute_norm_stats(norm_config)
+    cfg = replace(norm_config, data=replace(norm_config.data, input_size=size))
+    image = Image.new("RGB", (8, 8), (0, 64, 255))
+    with torch.random.fork_rng(devices=[]):
+        actual = _build_transform(cfg, split, stats)(image)
+    assert actual.shape == (3, size, size)
+    assert actual.dtype == torch.float32
+    # For this training fixture: (colour / 255 - mean) / std = [-1, -1, 1].
+    expected = torch.tensor([-1.0, -1.0, 1.0]).view(3, 1, 1).expand_as(actual)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_transform_works_with_manifest_dataset(norm_config):
+    stats = compute_norm_stats(norm_config)
+    transform = _build_transform(norm_config, "val", stats)
+    dataset = _EuroSATDataset(norm_config, "val", transform=transform)
+    first, label = dataset[0]
+    second, repeated_label = dataset[0]
+    assert first.shape == (3, norm_config.data.input_size, norm_config.data.input_size)
+    assert torch.equal(first, second)
+    assert label == repeated_label == CLASS_NAMES.index("River")
+
+
+def test_transform_is_picklable_for_windows_workers(transform_config, patterned_image):
+    import pickle
+
+    transform = _build_transform(transform_config, "train", IDENTITY_STATS)
+    restored = pickle.loads(pickle.dumps(transform))
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        expected = transform(patterned_image)
+        torch.manual_seed(42)
+        assert torch.equal(restored(patterned_image), expected)
+
+
+@pytest.mark.parametrize("size", [0, -1, 64.5, True])
+def test_transforms_reject_invalid_input_size(transform_config, size):
+    cfg = replace(transform_config, data=replace(transform_config.data, input_size=size))
+    with pytest.raises(DataError, match="input_size"):
+        _build_transform(cfg, "train", IDENTITY_STATS)
+
+
+def test_transforms_reject_unknown_split(transform_config):
+    with pytest.raises(DataError, match="unknown transform split"):
+        _build_transform(transform_config, "validation", IDENTITY_STATS)
+
+
+@pytest.fixture
+def loader_config(norm_config, patterned_image) -> Config:
+    # A spatially varied training sample makes augmentation observable through
+    # the factory, while the other fixture images keep channel variance nonzero.
+    path = _EuroSATDataset(norm_config, "train").samples[0][0]
+    patterned_image.save(path)
+    return replace(norm_config, data=replace(
+        norm_config.data, input_size=8, batch_size=5, num_workers=0,
+    ))
+
+
+def test_loaders_cover_manifest_in_contract_order(loader_config, monkeypatch):
+    from unittest.mock import Mock
+    from pr_edge import data
+
+    compute = Mock(wraps=compute_norm_stats)
+    monkeypatch.setattr(data, "compute_norm_stats", compute)
+    manifest = Path(loader_config.data.manifest)
+    before = manifest.read_bytes()
+    loaders = get_dataloaders(loader_config)
+    assert isinstance(loaders, tuple) and len(loaders) == 3
+    compute.assert_called_once_with(loader_config)
+    rows = read_manifest(manifest)
+    with torch.random.fork_rng(devices=[]):
+        for split, loader in zip(("train", "val", "test"), loaders):
+            expected = [
+                (Path(loader_config.data.root) / EUROSAT_IMAGE_SUBDIR / row["filepath"],
+                 CLASS_NAMES.index(row["label"]))
+                for row in rows if row["split"] == split
+            ]
+            assert loader.dataset.samples == expected
+            assert loader.batch_size == 5 and loader.num_workers == 0
+            batches = list(loader)
+            assert sum(len(labels) for _, labels in batches) == len(expected)
+            assert len(batches[-1][1]) == len(expected) % 5
+            labels = torch.cat([labels for _, labels in batches])
+            assert sorted(labels.tolist()) == sorted(label for _, label in expected)
+            if split != "train":
+                assert labels.tolist() == [label for _, label in expected]
+            for images, labels in batches:
+                assert images.shape == (len(labels), 3, 8, 8)
+                assert images.dtype == torch.float32 and images.device.type == "cpu"
+                assert labels.dtype == torch.int64
+                assert torch.isfinite(images).all()
+    assert manifest.read_bytes() == before
+
+
+@pytest.mark.parametrize("size", [64, 224])
+def test_input_size_switches_to_224_without_a_second_pipeline(loader_config, size):
+    cfg = replace(loader_config, data=replace(loader_config.data, input_size=size))
+    with torch.random.fork_rng(devices=[]):
+        for loader in get_dataloaders(cfg):
+            images, labels = next(iter(loader))
+            assert images.shape == (len(labels), 3, size, size)
+
+
+def test_factory_enables_augmentation_only_for_training(loader_config):
+    train, val, test = get_dataloaders(loader_config)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        images = [train.dataset[0][0] for _ in range(16)]
+        assert any(not torch.equal(images[0], image) for image in images[1:])
+        for loader in (val, test):
+            first = list(loader)
+            second = list(loader)
+            assert all(torch.equal(a, b) and torch.equal(la, lb)
+                       for (a, la), (b, lb) in zip(first, second))
+    disabled = replace(loader_config, data=replace(loader_config.data, augment=False))
+    train, _, _ = get_dataloaders(disabled)
+    assert torch.equal(train.dataset[0][0], train.dataset[0][0])
+
+
+def test_training_shuffles_each_epoch_without_validation_interference(loader_config):
+    from torch.utils.data import RandomSampler, SequentialSampler
+
+    train, val, test = get_dataloaders(loader_config)
+    assert isinstance(train.sampler, RandomSampler)
+    assert isinstance(val.sampler, SequentialSampler)
+    assert isinstance(test.sampler, SequentialSampler)
+    first = list(train.sampler)
+    list(val)
+    list(test)
+    second = list(train.sampler)
+    reference, _, _ = get_dataloaders(loader_config)
+    assert first == list(reference.sampler)
+    assert second == list(reference.sampler)
+    assert first != second
+    assert sorted(first) == sorted(second) == list(range(len(train.dataset)))
+    different, _, _ = get_dataloaders(replace(loader_config, seed=123))
+    assert first != list(different.sampler)
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_loader_batches_repeat_with_seed_including_spawn_workers(loader_config, workers):
+    cfg = replace(loader_config, data=replace(loader_config.data, num_workers=workers))
+    runs = []
+    with torch.random.fork_rng(devices=[]):
+        for _ in range(2):
+            torch.manual_seed(cfg.seed)
+            train, _, _ = get_dataloaders(cfg)
+            assert train.num_workers == workers
+            if workers:
+                # Exercise Windows spawning even when CI runs on Linux.
+                train.multiprocessing_context = "spawn"
+            runs.append(list(train))
+    assert len(runs[0]) == len(runs[1])
+    assert all(torch.equal(a, b) and torch.equal(la, lb)
+               for (a, la), (b, lb) in zip(*runs))
+
+
+def test_factory_does_not_reset_main_process_randomness(loader_config):
+    state = torch.get_rng_state().clone()
+    get_dataloaders(loader_config)
+    assert torch.equal(torch.get_rng_state(), state)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("batch_size", 0), ("batch_size", -1), ("batch_size", True),
+    ("num_workers", -1), ("num_workers", 1.5), ("num_workers", True),
+])
+def test_loader_factory_rejects_invalid_batch_or_worker_settings(field, value):
+    cfg = Config(run_id="base", data=replace(DataConfig(), **{field: value}))
+    with pytest.raises(DataError, match=field):
+        get_dataloaders(cfg)
+
+
+def test_sample_grid_is_reproducible_and_preserves_rng(norm_config, tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    state = torch.get_rng_state().clone()
+    assert _write_sample_grid(norm_config, first) == first
+    assert torch.equal(torch.get_rng_state(), state)
+    assert _write_sample_grid(norm_config, second) == second
+    assert torch.equal(torch.get_rng_state(), state)
+    assert first.read_bytes() == second.read_bytes()
+    with Image.open(first) as figure:
+        assert figure.format == "PNG"
+        assert figure.width > figure.height > 100
+
+
+def test_sample_grid_does_not_read_holdout_images(norm_config, tmp_path):
+    for split in ("val", "test"):
+        for path, _ in _EuroSATDataset(norm_config, split).samples:
+            path.write_bytes(b"holdout image must not be decoded for the training grid")
+    assert _write_sample_grid(norm_config, tmp_path / "grid.png").is_file()
+
+
+def test_sample_grid_redraws_an_identity_augmentation(loader_config, monkeypatch):
+    # Force no flips, then a first draw of zero turns and a second of one turn:
+    # the identity view must be rejected in favour of the rotated one.
+    monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.tensor([1.0]))
+    turns = iter([0, 1])
+    monkeypatch.setattr(torch, "randint", lambda *args, **kwargs: torch.tensor(next(turns)))
+    stats = compute_norm_stats(loader_config)
+    plain, _ = _EuroSATDataset(
+        loader_config, "train", transform=_build_transform(loader_config, "val", stats),
+    )[0]
+    augmented = _EuroSATDataset(
+        loader_config, "train", transform=_build_transform(loader_config, "train", stats),
+    )
+    changed = _distinct_augmentation(augmented, 0, plain)
+    assert not torch.equal(changed, plain)
+    torch.testing.assert_close(changed, torch.rot90(plain, 1, dims=(1, 2)))
+
+
+def test_sample_grid_gives_up_on_images_with_no_distinct_view(norm_config):
+    # Flat colours look identical under every flip and turn; this must terminate.
+    stats = compute_norm_stats(norm_config)
+    augmented = _EuroSATDataset(
+        norm_config, "train", transform=_build_transform(norm_config, "train", stats),
+    )
+    plain, _ = _EuroSATDataset(
+        norm_config, "train", transform=_build_transform(norm_config, "val", stats),
+    )[0]
+    assert torch.equal(_distinct_augmentation(augmented, 0, plain, attempts=4), plain)
+
+
+@pytest.mark.parametrize("workers,persistent", [(0, False), (2, True)])
+def test_workers_persist_so_startup_stays_out_of_epoch_time(loader_config, workers, persistent):
+    cfg = replace(loader_config, data=replace(loader_config.data, num_workers=workers))
+    assert all(loader.persistent_workers is persistent for loader in get_dataloaders(cfg))

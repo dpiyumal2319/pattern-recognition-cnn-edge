@@ -17,17 +17,23 @@ whose signatures are frozen below.
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import math
+import os
+import random
+import tempfile
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from .config import Config
-from .paths import resolve_path
+from .paths import REPORT_DIR, resolve_path
 
 # The single source of class ordering for the whole project. Never re-derive
 # this from a directory listing: filesystem order is not guaranteed across
@@ -262,6 +268,201 @@ def summarise_manifest(rows: list[dict[str, str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Manifest-backed image dataset
+# ---------------------------------------------------------------------------
+
+
+class _EuroSATDataset(Dataset):
+    """One manifest split, decoded lazily with an optional image transform.
+
+    This is internal plumbing for #3's statistics and loaders; the frozen
+    public interface remains unchanged. With no transform it returns RGB PIL
+    images, so statistics can use the original pixels. Each instance owns its
+    transform, allowing train augmentation and deterministic evaluation to
+    share the same image-loading code.
+    """
+
+    def __init__(
+        self,
+        cfg: Config,
+        split: str,
+        transform: Callable[[Image.Image], Image.Image | torch.Tensor] | None = None,
+    ) -> None:
+        if split not in SPLIT_FRACTIONS:
+            raise DataError(f"unknown dataset split: {split!r}")
+
+        # Validate the whole partition before filtering: validating only one
+        # split would both miss cross-split duplicates and fail stratification.
+        rows = read_manifest(cfg.data.manifest)
+        validate_manifest(rows)
+        image_root = resolve_path(cfg.data.root) / EUROSAT_IMAGE_SUBDIR
+        self.image_root = image_root
+        self.samples = [
+            (image_root / row["filepath"], CLASS_NAMES.index(row["label"]))
+            for row in rows
+            if row["split"] == split
+        ]
+        self.transform = transform
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, index: int) -> tuple[Image.Image | torch.Tensor, int]:
+        path, label = self.samples[index]
+        image: Image.Image | torch.Tensor
+        try:
+            # Conversion loads the pixels into an independent RGB image. The
+            # source file closes before transforms run, including in workers.
+            with Image.open(path) as source:
+                image = source.convert("RGB")
+        except OSError as exc:
+            raise DataError(f"cannot read EuroSAT image: {path}") from exc
+
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, label
+
+
+# ---------------------------------------------------------------------------
+# Image transforms
+# ---------------------------------------------------------------------------
+
+
+class _RandomQuarterTurn:
+    """Rotate a square RGB image by a uniformly chosen multiple of 90 degrees.
+
+    PIL transpose permutes pixels exactly, without interpolation or padding.
+    Use torch's RNG so the existing set_seed and future DataLoader worker seeds
+    control augmentation. A module-level callable is picklable on Windows.
+    """
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        turns = int(torch.randint(4, ()).item())
+        if turns == 0:
+            return image
+        rotations = (Image.Transpose.ROTATE_90, Image.Transpose.ROTATE_180, Image.Transpose.ROTATE_270)
+        return image.transpose(rotations[turns - 1])
+
+
+def _build_transform(
+    cfg: Config, split: str, stats: dict[str, list[float]],
+) -> Callable[[Image.Image], torch.Tensor]:
+    """Resize, optionally augment training images, then scale and normalise.
+
+    The caller supplies compute_norm_stats(cfg)'s training-only statistics once
+    for all three splits. This helper never reads data or estimates statistics.
+    The frozen augment flag enables the fixed flip/quarter-turn policy; no
+    additional configuration keys or public entry points are introduced.
+    """
+    from torchvision import transforms
+
+    if split not in SPLIT_FRACTIONS:
+        raise DataError(f"unknown transform split: {split!r}")
+    size = cfg.data.input_size
+    if type(size) is not int or size <= 0:
+        raise DataError("data.input_size must be a positive integer")
+
+    operations = [transforms.Resize(
+        (size, size), interpolation=transforms.InterpolationMode.BILINEAR, antialias=True,
+    )]
+    if split == "train" and cfg.data.augment:
+        # Overhead land-cover labels are preserved by flips and quarter-turns.
+        # Each flip independently has probability 0.5 (torchvision's default).
+        operations.extend([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            _RandomQuarterTurn(),
+        ])
+    operations.extend([
+        transforms.ToTensor(),  # RGB uint8 -> float32 CHW in [0, 1]
+        transforms.Normalize(mean=stats["mean"], std=stats["std"]),
+    ])
+    return transforms.Compose(operations)
+
+
+def _distinct_augmentation(
+    dataset: _EuroSATDataset, index: int, reference: torch.Tensor, attempts: int = 16,
+) -> torch.Tensor:
+    """Draw an augmented view of one sample that differs from ``reference``.
+
+    With no flip and no quarter-turn (a 1-in-16 draw) the policy returns the
+    image unchanged, and an "Augmented" panel identical to its original reads
+    as a bug in the report. Redrawing stays deterministic under the caller's
+    seed. A symmetric image may have no distinct view at all, so give up after
+    ``attempts`` draws rather than looping forever.
+    """
+    changed, _ = dataset[index]
+    for _ in range(attempts - 1):
+        if not torch.equal(changed, reference):
+            break
+        changed, _ = dataset[index]
+    return changed
+
+
+def _write_sample_grid(
+    cfg: Config,
+    out: str | Path = REPORT_DIR / "figures" / "data_augmentation_grid.png",
+) -> Path:
+    """Write a reproducible original/augmented pair for every manifest class.
+
+    Images are selected only from the training partition. Both columns pass
+    through the production resize and normalisation transforms; tensors are
+    denormalised solely for display. The local RNG context keeps report figure
+    generation from changing a subsequent experiment's random state.
+    """
+    # The object-oriented Figure API never selects a GUI backend. pyplot picks
+    # Tk on Windows, which intermittently fails to initialise Tcl in tests and
+    # is pointless for a file that is only ever saved.
+    from matplotlib.figure import Figure
+
+    stats = compute_norm_stats(cfg)
+    original = _EuroSATDataset(cfg, "train", transform=_build_transform(cfg, "val", stats))
+    augmented = _EuroSATDataset(cfg, "train", transform=_build_transform(cfg, "train", stats))
+    first_by_label: dict[int, int] = {}
+    for index, (_, label) in enumerate(original.samples):
+        first_by_label.setdefault(label, index)
+    if not first_by_label:
+        raise DataError("cannot create sample grid: training split is empty")
+
+    labels = sorted(first_by_label)
+    pairs_per_row = 2
+    rows = math.ceil(len(labels) / pairs_per_row)
+    figure = Figure(figsize=(10, 2.45 * rows))
+    axes = figure.subplots(rows, pairs_per_row * 2, squeeze=False)
+    mean = torch.tensor(stats["mean"], dtype=torch.float32).view(3, 1, 1)
+    std = torch.tensor(stats["std"], dtype=torch.float32).view(3, 1, 1)
+
+    def display(tensor: torch.Tensor) -> np.ndarray:
+        return (tensor * std + mean).clamp(0, 1).permute(1, 2, 0).numpy()
+
+    # fork_rng is CPU-only here: transforms use the CPU torch generator.
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(cfg.seed)
+        for position, label in enumerate(labels):
+            row, pair = divmod(position, pairs_per_row)
+            index = first_by_label[label]
+            plain, _ = original[index]
+            changed = _distinct_augmentation(augmented, index, plain)
+            for column_offset, (image, heading) in enumerate(
+                ((plain, "Original"), (changed, "Augmented"))
+            ):
+                axis = axes[row, pair * 2 + column_offset]
+                axis.imshow(display(image))
+                axis.set_title(f"{CLASS_NAMES[label]}\n{heading}", fontsize=9)
+                axis.axis("off")
+
+    # An incomplete final pair leaves two intentionally blank cells.
+    for position in range(len(labels) * 2, rows * pairs_per_row * 2):
+        axes.flat[position].axis("off")
+    figure.suptitle("EuroSAT training samples: original and online augmentation", fontsize=13)
+    figure.tight_layout(rect=(0, 0, 1, 0.975))
+    out = resolve_path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(out, dpi=200, bbox_inches="tight")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
 
@@ -334,21 +535,157 @@ def prepare_eurosat(cfg: Config, force: bool = False) -> Path:
     return manifest
 
 
-def compute_norm_stats(cfg: Config) -> dict[str, list[float]]:
-    """Per-channel mean and std, computed on the TRAINING SPLIT ONLY.
+def _norm_fingerprint(dataset: _EuroSATDataset) -> str:
+    """Identify local training files without decoding pixels on cache hits.
 
-    Computing these over the full dataset leaks test-set statistics into
-    preprocessing. Implemented by #3.
+    A changed partition, label or file size invalidates the cache. Relative
+    paths deliberately make the fingerprint portable between local machines
+    and Colab. EuroSAT files are immutable inputs, so hashing their full content
+    on every cache hit would repeat nearly all of the expensive image I/O.
     """
-    raise NotImplementedError("compute_norm_stats is issue #3")
+    digest = hashlib.sha256(b"eurosat-rgb-native-population-v1\n")
+    for path, label in dataset.samples:
+        try:
+            stat = path.stat()
+        except OSError as exc:
+            raise DataError(f"cannot inspect EuroSAT training image: {path}") from exc
+        record = (path.relative_to(dataset.image_root).as_posix(), label, stat.st_size)
+        digest.update(json.dumps(record).encode("utf-8") + b"\n")
+    return digest.hexdigest()
+
+
+def _read_norm_cache(path: Path, fingerprint: str) -> dict[str, list[float]] | None:
+    """Ignore stale, incomplete or malformed caches and recompute them."""
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeError):
+        return None
+    if not isinstance(cached, dict) or cached.get("_source") != fingerprint:
+        return None
+    for name in ("mean", "std"):
+        values = cached.get(name)
+        if not isinstance(values, list) or len(values) != 3:
+            return None
+        if any(type(value) not in (int, float) or not math.isfinite(value) for value in values):
+            return None
+        if any(not 0 <= value <= 1 for value in values):
+            return None
+        if name == "std" and any(value == 0 for value in values):
+            return None
+    # Metadata stays on disk; callers get exactly the frozen mean/std contract.
+    return {name: [float(value) for value in cached[name]] for name in ("mean", "std")}
+
+
+def compute_norm_stats(cfg: Config) -> dict[str, list[float]]:
+    """Cache RGB population mean/std from native, unaugmented training pixels.
+
+    Statistics describe pixels scaled to [0, 1]. They are independent of the
+    requested input size, batch size, augmentation and seed: all experiments
+    use the same manifest and native-image preprocessing statistics. Only
+    training files are inspected or decoded; val/test never contribute.
+
+    The JSON cache contains mean/std and a private ``_source`` fingerprint.
+    Changed training file metadata or a changed partition triggers a rescan.
+    """
+    dataset = _EuroSATDataset(cfg, "train")
+    if not len(dataset):
+        raise DataError("cannot compute normalisation statistics: training split is empty")
+    cache = resolve_path(cfg.data.norm_stats)
+    fingerprint = _norm_fingerprint(dataset)
+    cached = _read_norm_cache(cache, fingerprint)
+    if cached is not None:
+        return cached
+
+    total = np.zeros(3, dtype=np.float64)
+    squared_total = np.zeros(3, dtype=np.float64)
+    count = 0
+    for image, _ in dataset:
+        # Stream one image at a time. Pool pixel sums, not per-image standard
+        # deviations, and weight images by their actual number of pixels.
+        pixels = np.asarray(image, dtype=np.float64).reshape(-1, 3)
+        total += pixels.sum(axis=0)
+        squared_total += np.square(pixels).sum(axis=0)
+        count += len(pixels)
+
+    # Accumulating raw integer-valued pixels in float64 avoids early rounding.
+    # Dividing here gives the same units as converting each pixel with /255.
+    mean = total / count
+    variance = np.maximum(squared_total / count - np.square(mean), 0)
+    std = np.sqrt(variance) / 255.0
+    if np.any(std == 0):
+        raise DataError("training images have a zero-variance RGB channel; cannot normalise")
+    stats = {"mean": (mean / 255.0).tolist(), "std": std.tolist()}
+
+    # Do not publish statistics for files that changed during the scan.
+    if _norm_fingerprint(dataset) != fingerprint:
+        raise DataError("training images changed while computing normalisation statistics; retry")
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    # Replace atomically so an interrupted write cannot leave a partial cache.
+    # Close the temporary file before replace (required on Windows).
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=cache.parent, prefix=f".{cache.name}.",
+        suffix=".tmp", delete=False,
+    ) as handle:
+        temporary = Path(handle.name)
+        try:
+            json.dump({**stats, "_source": fingerprint}, handle, indent=2, allow_nan=False)
+            handle.write("\n")
+        except BaseException:
+            handle.close()
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temporary, cache)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return stats
+
+
+def _seed_worker(worker_id: int) -> None:
+    """Extend PyTorch's per-worker seed to Python and NumPy on every platform."""
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
 
 def get_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Train, validation and test loaders built from the committed manifest.
+    """Return train, validation and test loaders from the committed manifest.
 
-    Augmentation applies to the training loader only. Implemented by #3.
+    All splits share training-derived statistics; augmentation and shuffling
+    apply only to training. No samples are dropped, including the last batch.
+    Images stay on CPU for the training/evaluation loop to move to its device.
+
+    Each loader has its own seeded generator for sampling and worker seeds.
+    As in run_experiment.py, call set_seed(cfg.seed) once before starting a run:
+    with num_workers=0, augmentation uses the main process's torch RNG. Do not
+    reseed here, since constructing loaders must not reset model randomness.
     """
-    raise NotImplementedError("get_dataloaders is issue #3")
+    if type(cfg.data.batch_size) is not int or cfg.data.batch_size <= 0:
+        raise DataError("data.batch_size must be a positive integer")
+    if type(cfg.data.num_workers) is not int or cfg.data.num_workers < 0:
+        raise DataError("data.num_workers must be a non-negative integer")
+
+    stats = compute_norm_stats(cfg)
+    loaders = []
+    for offset, split in enumerate(("train", "val", "test")):
+        dataset = _EuroSATDataset(cfg, split, transform=_build_transform(cfg, split, stats))
+        # Separate generators keep validation/test iterator creation from
+        # advancing the next training shuffle or training worker seeds.
+        generator = torch.Generator().manual_seed(cfg.seed + offset)
+        loaders.append(DataLoader(
+            dataset,
+            batch_size=cfg.data.batch_size,
+            num_workers=cfg.data.num_workers,
+            shuffle=(split == "train"),
+            drop_last=False,
+            generator=generator,
+            # Keep workers alive between epochs. Otherwise every epoch pays
+            # worker start-up (~4 s per epoch with spawn on Windows) inside the
+            # timed training pass, inflating the graded epoch_seconds column.
+            persistent_workers=cfg.data.num_workers > 0,
+            worker_init_fn=_seed_worker,
+        ))
+    return loaders[0], loaders[1], loaders[2]
 
 
 def get_synthetic_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:
