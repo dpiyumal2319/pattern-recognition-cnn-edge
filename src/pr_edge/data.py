@@ -21,6 +21,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import tempfile
 from collections import defaultdict
 from collections.abc import Callable, Sequence
@@ -556,12 +557,47 @@ def compute_norm_stats(cfg: Config) -> dict[str, list[float]]:
     return stats
 
 
-def get_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Train, validation and test loaders built from the committed manifest.
+def _seed_worker(worker_id: int) -> None:
+    """Extend PyTorch's per-worker seed to Python and NumPy on every platform."""
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
-    Augmentation applies to the training loader only. Implemented by #3.
+
+def get_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:
+    """Return train, validation and test loaders from the committed manifest.
+
+    All splits share training-derived statistics; augmentation and shuffling
+    apply only to training. No samples are dropped, including the last batch.
+    Images stay on CPU for the training/evaluation loop to move to its device.
+
+    Each loader has its own seeded generator for sampling and worker seeds.
+    As in run_experiment.py, call set_seed(cfg.seed) once before starting a run:
+    with num_workers=0, augmentation uses the main process's torch RNG. Do not
+    reseed here, since constructing loaders must not reset model randomness.
     """
-    raise NotImplementedError("get_dataloaders is issue #3")
+    if type(cfg.data.batch_size) is not int or cfg.data.batch_size <= 0:
+        raise DataError("data.batch_size must be a positive integer")
+    if type(cfg.data.num_workers) is not int or cfg.data.num_workers < 0:
+        raise DataError("data.num_workers must be a non-negative integer")
+
+    stats = compute_norm_stats(cfg)
+    loaders = []
+    for offset, split in enumerate(("train", "val", "test")):
+        dataset = _EuroSATDataset(cfg, split, transform=_build_transform(cfg, split, stats))
+        # Separate generators keep validation/test iterator creation from
+        # advancing the next training shuffle or training worker seeds.
+        generator = torch.Generator().manual_seed(cfg.seed + offset)
+        loaders.append(DataLoader(
+            dataset,
+            batch_size=cfg.data.batch_size,
+            num_workers=cfg.data.num_workers,
+            shuffle=(split == "train"),
+            drop_last=False,
+            generator=generator,
+            worker_init_fn=_seed_worker,
+        ))
+    return loaders[0], loaders[1], loaders[2]
 
 
 def get_synthetic_dataloaders(cfg: Config) -> tuple[DataLoader, DataLoader, DataLoader]:

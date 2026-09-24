@@ -54,8 +54,18 @@ independent horizontal/vertical flips (each with probability 0.5) and a uniform
 choice of 0, 90, 180 or 270 degree rotation. These preserve overhead land-cover
 labels. Validation/test transforms are deterministic; `augment: false` makes
 training preprocessing deterministic too. Random transforms use PyTorch's RNG
-and the project's existing seed setup. DataLoader factory integration follows
-in the next subtask of #3.
+and the project's existing seed setup.
+
+`get_dataloaders(cfg)` returns `(train_loader, val_loader, test_loader)`, using
+`data.batch_size` and `data.num_workers` for every split. Training shuffles each
+epoch; validation/test preserve manifest order. Every sample is retained,
+including incomplete final batches, and tensors stay on CPU until the training
+or evaluation loop moves them to its device. Call `set_seed(cfg.seed)` once at
+the beginning of a run, as the experiment CLI already does. Loader generators
+seed sampling and workers independently per split; main-process augmentation
+(`num_workers: 0`) uses that run-level seed. Reproducibility assumes the same
+worker settings. On Windows, call loaders from a script guarded by
+`if __name__ == "__main__":` when using workers.
 
 ## Quickstart — Colab
 

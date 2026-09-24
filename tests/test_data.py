@@ -11,8 +11,8 @@ Three tiers, none of which touch the network:
    file is in the repository, so these run on every future PR and permanently
    guard the partition every result in ``results/`` descends from.
 
-#3 covers manifest-backed images, statistics and transforms below; the loader
-# integration check remains skipped until its factory is implemented.
+#3 covers manifest-backed images, statistics, transforms and loader integration
+# below, including worker processes with Windows-compatible spawn semantics.
 See docs/interfaces.md section 5 for the full test-file map.
 """
 
@@ -43,6 +43,7 @@ from pr_edge.data import (
     _build_transform,
     _stratified_split,
     compute_norm_stats,
+    get_dataloaders,
     prepare_eurosat,
     read_manifest,
     validate_manifest,
@@ -711,6 +712,127 @@ def test_transforms_reject_unknown_split(transform_config):
         _build_transform(transform_config, "validation", IDENTITY_STATS)
 
 
-@pytest.mark.skip(reason="not implemented yet - owned by #3")
-def test_input_size_switches_to_224_without_a_second_pipeline():
-    """The SOTA harness (#19) needs this for the resolution ablation."""
+@pytest.fixture
+def loader_config(norm_config, patterned_image) -> Config:
+    # A spatially varied training sample makes augmentation observable through
+    # the factory, while the other fixture images keep channel variance nonzero.
+    path = _EuroSATDataset(norm_config, "train").samples[0][0]
+    patterned_image.save(path)
+    return replace(norm_config, data=replace(
+        norm_config.data, input_size=8, batch_size=5, num_workers=0,
+    ))
+
+
+def test_loaders_cover_manifest_in_contract_order(loader_config, monkeypatch):
+    from unittest.mock import Mock
+    from pr_edge import data
+
+    compute = Mock(wraps=compute_norm_stats)
+    monkeypatch.setattr(data, "compute_norm_stats", compute)
+    manifest = Path(loader_config.data.manifest)
+    before = manifest.read_bytes()
+    loaders = get_dataloaders(loader_config)
+    assert isinstance(loaders, tuple) and len(loaders) == 3
+    compute.assert_called_once_with(loader_config)
+    rows = read_manifest(manifest)
+    with torch.random.fork_rng(devices=[]):
+        for split, loader in zip(("train", "val", "test"), loaders):
+            expected = [
+                (Path(loader_config.data.root) / EUROSAT_IMAGE_SUBDIR / row["filepath"],
+                 CLASS_NAMES.index(row["label"]))
+                for row in rows if row["split"] == split
+            ]
+            assert loader.dataset.samples == expected
+            assert loader.batch_size == 5 and loader.num_workers == 0
+            batches = list(loader)
+            assert sum(len(labels) for _, labels in batches) == len(expected)
+            assert len(batches[-1][1]) == len(expected) % 5
+            labels = torch.cat([labels for _, labels in batches])
+            assert sorted(labels.tolist()) == sorted(label for _, label in expected)
+            if split != "train":
+                assert labels.tolist() == [label for _, label in expected]
+            for images, labels in batches:
+                assert images.shape == (len(labels), 3, 8, 8)
+                assert images.dtype == torch.float32 and images.device.type == "cpu"
+                assert labels.dtype == torch.int64
+                assert torch.isfinite(images).all()
+    assert manifest.read_bytes() == before
+
+
+@pytest.mark.parametrize("size", [64, 224])
+def test_input_size_switches_to_224_without_a_second_pipeline(loader_config, size):
+    cfg = replace(loader_config, data=replace(loader_config.data, input_size=size))
+    with torch.random.fork_rng(devices=[]):
+        for loader in get_dataloaders(cfg):
+            images, labels = next(iter(loader))
+            assert images.shape == (len(labels), 3, size, size)
+
+
+def test_factory_enables_augmentation_only_for_training(loader_config):
+    train, val, test = get_dataloaders(loader_config)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(42)
+        images = [train.dataset[0][0] for _ in range(16)]
+        assert any(not torch.equal(images[0], image) for image in images[1:])
+        for loader in (val, test):
+            first = list(loader)
+            second = list(loader)
+            assert all(torch.equal(a, b) and torch.equal(la, lb)
+                       for (a, la), (b, lb) in zip(first, second))
+    disabled = replace(loader_config, data=replace(loader_config.data, augment=False))
+    train, _, _ = get_dataloaders(disabled)
+    assert torch.equal(train.dataset[0][0], train.dataset[0][0])
+
+
+def test_training_shuffles_each_epoch_without_validation_interference(loader_config):
+    from torch.utils.data import RandomSampler, SequentialSampler
+
+    train, val, test = get_dataloaders(loader_config)
+    assert isinstance(train.sampler, RandomSampler)
+    assert isinstance(val.sampler, SequentialSampler)
+    assert isinstance(test.sampler, SequentialSampler)
+    first = list(train.sampler)
+    list(val)
+    list(test)
+    second = list(train.sampler)
+    reference, _, _ = get_dataloaders(loader_config)
+    assert first == list(reference.sampler)
+    assert second == list(reference.sampler)
+    assert first != second
+    assert sorted(first) == sorted(second) == list(range(len(train.dataset)))
+    different, _, _ = get_dataloaders(replace(loader_config, seed=123))
+    assert first != list(different.sampler)
+
+
+@pytest.mark.parametrize("workers", [0, 2])
+def test_loader_batches_repeat_with_seed_including_spawn_workers(loader_config, workers):
+    cfg = replace(loader_config, data=replace(loader_config.data, num_workers=workers))
+    runs = []
+    with torch.random.fork_rng(devices=[]):
+        for _ in range(2):
+            torch.manual_seed(cfg.seed)
+            train, _, _ = get_dataloaders(cfg)
+            assert train.num_workers == workers
+            if workers:
+                # Exercise Windows spawning even when CI runs on Linux.
+                train.multiprocessing_context = "spawn"
+            runs.append(list(train))
+    assert len(runs[0]) == len(runs[1])
+    assert all(torch.equal(a, b) and torch.equal(la, lb)
+               for (a, la), (b, lb) in zip(*runs))
+
+
+def test_factory_does_not_reset_main_process_randomness(loader_config):
+    state = torch.get_rng_state().clone()
+    get_dataloaders(loader_config)
+    assert torch.equal(torch.get_rng_state(), state)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("batch_size", 0), ("batch_size", -1), ("batch_size", True),
+    ("num_workers", -1), ("num_workers", 1.5), ("num_workers", True),
+])
+def test_loader_factory_rejects_invalid_batch_or_worker_settings(field, value):
+    cfg = Config(run_id="base", data=replace(DataConfig(), **{field: value}))
+    with pytest.raises(DataError, match=field):
+        get_dataloaders(cfg)
