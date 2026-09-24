@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
@@ -42,6 +41,7 @@ from pr_edge.data import (
     _allocate,
     _build_transform,
     _stratified_split,
+    _write_sample_grid,
     compute_norm_stats,
     get_dataloaders,
     prepare_eurosat,
@@ -503,12 +503,10 @@ def test_norm_stats_cache_avoids_image_decoding_and_rewriting(norm_config, monke
 def test_norm_stats_refresh_after_training_image_changes(norm_config):
     before = compute_norm_stats(norm_config)
     path = _EuroSATDataset(norm_config, "train").samples[0][0]
-    previous = path.stat()
-    Image.new("RGB", (8, 8), (255, 192, 0)).save(path)
-    # Explicit time change avoids depending on the filesystem clock resolution.
-    os.utime(path, ns=(previous.st_atime_ns, previous.st_mtime_ns + 1_000_000_000))
+    # A different size changes both source metadata and pixel weighting.
+    Image.new("RGB", (16, 8), (255, 192, 0)).save(path)
     after = compute_norm_stats(norm_config)
-    assert after["mean"][0] == pytest.approx(15 / 28)
+    assert after["mean"][0] == pytest.approx(16 / 29)
     assert after != before
 
 
@@ -571,20 +569,25 @@ def test_norm_stats_resolve_nested_cache_relative_to_project(norm_config, tmp_pa
     assert not (elsewhere / "cache").exists()
 
 
-def test_prepare_data_cli_writes_and_reuses_norm_cache(norm_config, tmp_path):
+def test_prepare_data_cli_writes_and_reuses_norm_cache(norm_config, tmp_path, monkeypatch):
     from pr_edge.config import dump_config
-    from scripts.prepare_data import main
+    from scripts import prepare_data
 
     config_file = tmp_path / "base.yaml"
     dump_config(norm_config, config_file)
+    monkeypatch.setattr(
+        prepare_data, "_write_sample_grid",
+        lambda cfg: _write_sample_grid(cfg, tmp_path / "sample_grid.png"),
+    )
     manifest = Path(norm_config.data.manifest)
     original = manifest.read_bytes()
-    assert main(["--config", str(config_file)]) == 0
+    assert prepare_data.main(["--config", str(config_file)]) == 0
     cache = Path(norm_config.data.norm_stats)
     cached = cache.read_bytes()
-    assert main(["--config", str(config_file)]) == 0
+    assert prepare_data.main(["--config", str(config_file)]) == 0
     assert cache.read_bytes() == cached
     assert manifest.read_bytes() == original
+    assert (tmp_path / "sample_grid.png").is_file()
 
 
 @pytest.fixture
@@ -836,3 +839,24 @@ def test_loader_factory_rejects_invalid_batch_or_worker_settings(field, value):
     cfg = Config(run_id="base", data=replace(DataConfig(), **{field: value}))
     with pytest.raises(DataError, match=field):
         get_dataloaders(cfg)
+
+
+def test_sample_grid_is_reproducible_and_preserves_rng(norm_config, tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    state = torch.get_rng_state().clone()
+    assert _write_sample_grid(norm_config, first) == first
+    assert torch.equal(torch.get_rng_state(), state)
+    assert _write_sample_grid(norm_config, second) == second
+    assert torch.equal(torch.get_rng_state(), state)
+    assert first.read_bytes() == second.read_bytes()
+    with Image.open(first) as figure:
+        assert figure.format == "PNG"
+        assert figure.width > figure.height > 100
+
+
+def test_sample_grid_does_not_read_holdout_images(norm_config, tmp_path):
+    for split in ("val", "test"):
+        for path, _ in _EuroSATDataset(norm_config, split).samples:
+            path.write_bytes(b"holdout image must not be decoded for the training grid")
+    assert _write_sample_grid(norm_config, tmp_path / "grid.png").is_file()

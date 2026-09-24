@@ -1,0 +1,27 @@
+\subsection{Data preparation}
+\label{sec:data-preparation}
+
+EuroSAT contains 27,000 Sentinel-2 RGB land-cover images in ten classes. Each
+image is natively $64\times64$ pixels, so the assignment's maximum input
+resolution is satisfied without discarding spatial detail. We created one
+stratified 70/15/15 training, validation and test partition and stored every
+assignment in a shared manifest. All custom and pretrained-model experiments
+read this manifest, preventing accidental repartitioning between comparisons.
+Per-channel means and population standard deviations were calculated from the
+unaugmented training pixels only, cached, and then reused to normalise all three
+splits. Excluding validation and test pixels ensures that held-out information
+does not influence preprocessing. During training, independent horizontal and
+vertical flips and a uniformly selected multiple-of-$90^\circ$ rotation are
+applied online. These transformations preserve EuroSAT's overhead land-cover
+labels because those labels do not depend on camera orientation. Validation and
+test preprocessing is deterministic and contains only resizing, tensor
+conversion and normalisation.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{figures/data_augmentation_grid.png}
+    \caption{One training image from each EuroSAT class before and after the
+    configured online augmentation. EuroSAT images are natively
+    $64\times64$ pixels.}
+    \label{fig:data-augmentation-grid}
+\end{figure}

@@ -33,7 +33,7 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from .config import Config
-from .paths import resolve_path
+from .paths import REPORT_DIR, resolve_path
 
 # The single source of class ordering for the whole project. Never re-derive
 # this from a directory listing: filesystem order is not guaranteed across
@@ -296,6 +296,7 @@ class _EuroSATDataset(Dataset):
         rows = read_manifest(cfg.data.manifest)
         validate_manifest(rows)
         image_root = resolve_path(cfg.data.root) / EUROSAT_IMAGE_SUBDIR
+        self.image_root = image_root
         self.samples = [
             (image_root / row["filepath"], CLASS_NAMES.index(row["label"]))
             for row in rows
@@ -379,6 +380,68 @@ def _build_transform(
     return transforms.Compose(operations)
 
 
+def _write_sample_grid(
+    cfg: Config,
+    out: str | Path = REPORT_DIR / "figures" / "data_augmentation_grid.png",
+) -> Path:
+    """Write a reproducible original/augmented pair for every manifest class.
+
+    Images are selected only from the training partition. Both columns pass
+    through the production resize and normalisation transforms; tensors are
+    denormalised solely for display. The local RNG context keeps report figure
+    generation from changing a subsequent experiment's random state.
+    """
+    import matplotlib.pyplot as plt
+
+    stats = compute_norm_stats(cfg)
+    original = _EuroSATDataset(cfg, "train", transform=_build_transform(cfg, "val", stats))
+    augmented = _EuroSATDataset(cfg, "train", transform=_build_transform(cfg, "train", stats))
+    first_by_label: dict[int, int] = {}
+    for index, (_, label) in enumerate(original.samples):
+        first_by_label.setdefault(label, index)
+    if not first_by_label:
+        raise DataError("cannot create sample grid: training split is empty")
+
+    labels = sorted(first_by_label)
+    pairs_per_row = 2
+    rows = math.ceil(len(labels) / pairs_per_row)
+    figure, axes = plt.subplots(
+        rows, pairs_per_row * 2, figsize=(10, 2.45 * rows), squeeze=False,
+    )
+    mean = torch.tensor(stats["mean"], dtype=torch.float32).view(3, 1, 1)
+    std = torch.tensor(stats["std"], dtype=torch.float32).view(3, 1, 1)
+
+    def display(tensor: torch.Tensor) -> np.ndarray:
+        return (tensor * std + mean).clamp(0, 1).permute(1, 2, 0).numpy()
+
+    # fork_rng is CPU-only here: transforms use the CPU torch generator.
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(cfg.seed)
+        for position, label in enumerate(labels):
+            row, pair = divmod(position, pairs_per_row)
+            index = first_by_label[label]
+            plain, _ = original[index]
+            changed, _ = augmented[index]
+            for column_offset, (image, heading) in enumerate(
+                ((plain, "Original"), (changed, "Augmented"))
+            ):
+                axis = axes[row, pair * 2 + column_offset]
+                axis.imshow(display(image))
+                axis.set_title(f"{CLASS_NAMES[label]}\n{heading}", fontsize=9)
+                axis.axis("off")
+
+    # An incomplete final pair leaves two intentionally blank cells.
+    for position in range(len(labels) * 2, rows * pairs_per_row * 2):
+        axes.flat[position].axis("off")
+    figure.suptitle("EuroSAT training samples: original and online augmentation", fontsize=13)
+    figure.tight_layout(rect=(0, 0, 1, 0.975))
+    out = resolve_path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(figure)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
@@ -455,17 +518,18 @@ def prepare_eurosat(cfg: Config, force: bool = False) -> Path:
 def _norm_fingerprint(dataset: _EuroSATDataset) -> str:
     """Identify local training files without decoding pixels on cache hits.
 
-    A new root, partition, file size or modification time invalidates the cache.
-    This assumes dataset files are immutable unless their metadata changes;
-    it is deliberately not a content checksum requiring a second image scan.
+    A changed partition, label or file size invalidates the cache. Relative
+    paths deliberately make the fingerprint portable between local machines
+    and Colab. EuroSAT files are immutable inputs, so hashing their full content
+    on every cache hit would repeat nearly all of the expensive image I/O.
     """
     digest = hashlib.sha256(b"eurosat-rgb-native-population-v1\n")
-    for path, _ in dataset.samples:
+    for path, label in dataset.samples:
         try:
             stat = path.stat()
         except OSError as exc:
             raise DataError(f"cannot inspect EuroSAT training image: {path}") from exc
-        record = (path.resolve().as_posix(), stat.st_size, stat.st_mtime_ns)
+        record = (path.relative_to(dataset.image_root).as_posix(), label, stat.st_size)
         digest.update(json.dumps(record).encode("utf-8") + b"\n")
     return digest.hexdigest()
 

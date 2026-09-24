@@ -42,8 +42,8 @@ Data preparation caches RGB channel means and population standard deviations in
 `data.norm_stats` (default `data/norm_stats.json`). They come exclusively from the
 manifest's training images, using native-resolution pixels scaled to `[0, 1]`
 before resizing or augmentation. The same statistics therefore serve both 64
-and 224 input sizes. Cache validation checks training paths, file sizes and
-modification times without decoding images; a changed source or malformed cache
+and 224 input sizes. Cache validation checks relative training paths, labels
+and file sizes without decoding images; a changed source or malformed cache
 triggers recomputation. The cache's `_source` field is internal metadata;
 `compute_norm_stats(cfg)` returns only `mean` and `std`.
 
@@ -66,6 +66,10 @@ seed sampling and workers independently per split; main-process augmentation
 (`num_workers: 0`) uses that run-level seed. Reproducibility assumes the same
 worker settings. On Windows, call loaders from a script guarded by
 `if __name__ == "__main__":` when using workers.
+
+The preparation command also writes a fixed-seed original/augmented sample grid
+to `report/figures/data_augmentation_grid.png`. Its matching LaTeX methodology
+text is in `report/sections/data_preparation.tex` for the final report assembly.
 
 ## Quickstart — Colab
 
