@@ -98,8 +98,13 @@ into the report, because they are.
 
 Run it. Actually run it.
 
+First confirm the new code has tests (AGENTS.md step 5b): every new function or behaviour, and a
+test that fails without the fix for every bug fix, and no leftover skip stubs this issue owns.
+Write any that are missing now, before running anything.
+
 ```bash
 pytest <the test file named for this issue> -v
+pytest                                                    # the whole suite, not just yours
 python scripts/run_experiment.py --config <cfg> --smoke   # if this issue touches the pipeline
 ```
 

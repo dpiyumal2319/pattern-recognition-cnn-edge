@@ -151,10 +151,27 @@ deviate from what an issue specified, hit a result you did not expect, or discar
 did not work. **Dead ends are worth recording** — "we tried X and it failed because Y" is a
 legitimate and often high-value report sentence.
 
+### 5b. Write tests with the code, not after it
+
+**Every new function, branch of behaviour or bug fix ships with tests in the same PR.** Put them in
+the test file `docs/interfaces.md` section 5 names for the issue, or in a new `tests/test_<module>.py`
+when there is none. Code without a test is not done, even if it runs.
+
+- Test the behaviour the issue promises, not just that it imports: the acceptance criteria are
+  the minimum list of things to assert.
+- A bug fix gets a test that fails without the fix. Otherwise nothing stops the bug coming back.
+- Tests must not touch the network or need the real 94 MB dataset. Build a small fixture in
+  `tmp_path` instead; `tests/test_data.py` has worked examples.
+- Unskip the `@pytest.mark.skip` stubs your issue owns. A PR that leaves its own stubs skipped
+  has not tested anything.
+
 ### 6. Verify before marking the PR ready
 
 Run the script end to end. Confirm the `results/<run_id>/` artifacts actually appear on disk and
 match the contract in section 3. An issue is not done because the code imports cleanly.
+
+Run the **whole** suite with `pytest`, not just your own test file, and check that the pass count
+went up by the tests you added. A change in one module can break another's contract.
 
 ### 7. Mark the PR ready for review
 
