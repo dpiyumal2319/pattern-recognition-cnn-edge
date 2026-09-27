@@ -80,6 +80,16 @@ def evaluate(
     """Evaluate a model and optionally write ``metrics.json``.
 
     The test set is touched exactly once, here, after training is complete.
+
+    Confusion matrix convention: ``confusion_matrix[i][j]`` counts samples
+    whose TRUE class is ``class_names[i]`` and whose PREDICTED class is
+    ``class_names[j]``. Rows are true labels, columns are predictions - the
+    same layout as ``docs/slides/Learning from data.pdf`` p31-p32. So a row
+    sum is a class's support (used for recall) and a column sum is how often
+    the class was predicted (used for precision).
+
+    Precision, recall and F1 that would be 0/0 (a class never predicted, or
+    absent from the labels) are reported as 0.0, never NaN.
     """
     y_true, y_pred = _predict(model, loader, device)
 
