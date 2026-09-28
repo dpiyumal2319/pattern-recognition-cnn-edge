@@ -17,6 +17,8 @@ from pr_edge.schemas import (
     validate_history,
     validate_metrics,
     validate_profile,
+    validate_run_dir,
+    validate_selection,
 )
 
 VALID_HISTORY = [
@@ -44,11 +46,58 @@ VALID_PROFILE = {
     "mean_epoch_seconds": 1.45, "device": "cpu", "device_name": "CPU",
 }
 
+# Epoch 2 of VALID_HISTORY has the lower val_loss.
+VALID_SELECTION = {
+    "criterion": "val_loss", "best_epoch": 2, "best_val_loss": 1.9,
+    "best_val_acc": 0.25, "epochs_trained": 2,
+}
+
 
 def test_valid_examples_pass():
     assert validate_history(VALID_HISTORY) == []
     assert validate_metrics(VALID_METRICS) == []
     assert validate_profile(VALID_PROFILE) == []
+    assert validate_selection(VALID_SELECTION) == []
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"best_epoch": 0}, "within 1..epochs_trained"),
+    ({"best_epoch": 3}, "within 1..epochs_trained"),
+    ({"criterion": "val_acc"}, "criterion must be 'val_loss'"),
+    ({"best_epoch": 2.0}, "'best_epoch' should be int"),
+])
+def test_invalid_selection_is_caught(change, message):
+    assert any(message in e for e in validate_selection({**VALID_SELECTION, **change}))
+
+
+def _write_run_dir(directory, selection):
+    directory.mkdir()
+    files = {"history.json": VALID_HISTORY, "metrics.json": VALID_METRICS,
+             "profile.json": VALID_PROFILE, "selection.json": selection}
+    for name, data in files.items():
+        (directory / name).write_text(json.dumps(data), encoding="utf-8")
+    (directory / "config.yaml").write_text("run_id: x\n", encoding="utf-8")
+    return directory
+
+
+def test_run_dir_with_consistent_selection_passes(tmp_path):
+    assert validate_run_dir(_write_run_dir(tmp_path / "run", VALID_SELECTION)) == []
+
+
+def test_run_dir_requires_selection(tmp_path):
+    directory = _write_run_dir(tmp_path / "run", VALID_SELECTION)
+    (directory / "selection.json").unlink()
+    assert any("missing selection.json" in e for e in validate_run_dir(directory))
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"best_epoch": 1}, "lowest val_loss is at epoch 2"),
+    ({"best_epoch": 1, "epochs_trained": 3}, "history.json has 2 epochs"),
+])
+def test_selection_must_agree_with_history(tmp_path, change, message):
+    """A checkpoint the history does not justify is a report claiming the wrong model."""
+    directory = _write_run_dir(tmp_path / "run", {**VALID_SELECTION, **change})
+    assert any(message in e for e in validate_run_dir(directory))
 
 
 def test_missing_key_is_caught():
@@ -97,7 +146,7 @@ def _committed_result_files():
         return []
     return [
         p for p in RESULTS_DIR.glob("*/*.json")
-        if p.name in {"history.json", "metrics.json", "profile.json"}
+        if p.name in {"history.json", "metrics.json", "profile.json", "selection.json"}
         and not p.parent.name.startswith("_smoke_")
     ]
 

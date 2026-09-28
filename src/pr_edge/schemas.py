@@ -12,6 +12,7 @@ pinned dependency is one fewer thing to break on a Colab runtime.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,14 @@ PROFILE_FIELDS: dict[str, tuple] = {
     "mean_epoch_seconds": Number,
     "device": (str,),
     "device_name": (str,),
+}
+
+SELECTION_FIELDS: dict[str, tuple] = {
+    "criterion": (str,),
+    "best_epoch": (int,),
+    "best_val_loss": Number,
+    "best_val_acc": Number,
+    "epochs_trained": (int,),
 }
 
 
@@ -141,10 +150,49 @@ def validate_profile(data: Any) -> list[str]:
     return errors
 
 
+def validate_selection(data: Any) -> list[str]:
+    errors = _check_fields(data, SELECTION_FIELDS, "selection")
+    if errors or not isinstance(data, dict):
+        return errors
+    if data["criterion"] != "val_loss":
+        errors.append("selection: criterion must be 'val_loss'")
+    if not 1 <= data["best_epoch"] <= data["epochs_trained"]:
+        errors.append("selection: best_epoch must lie within 1..epochs_trained")
+    return errors
+
+
+def check_selection_matches_history(selection: Any, history: Any) -> list[str]:
+    """The selected epoch must be the one history.json says it should be.
+
+    Re-derives the choice from the recorded validation losses: the first epoch
+    holding the lowest finite ``val_loss``. A disagreement means the evaluated
+    checkpoint is not the one the report claims, which no single-file schema
+    check can detect.
+    """
+    if not isinstance(selection, dict) or not isinstance(history, list) or not history:
+        return []
+    losses = [
+        (r["val_loss"], r["epoch"]) for r in history
+        if isinstance(r, dict) and isinstance(r.get("val_loss"), Number)
+        and math.isfinite(r["val_loss"])
+    ]
+    errors: list[str] = []
+    if selection.get("epochs_trained") != len(history):
+        errors.append(f"selection: epochs_trained is {selection.get('epochs_trained')} "
+                      f"but history.json has {len(history)} epochs")
+    if losses:
+        expected = min(losses)[1]  # ties resolve to the earlier epoch
+        if selection.get("best_epoch") != expected:
+            errors.append(f"selection: best_epoch is {selection.get('best_epoch')} but "
+                          f"history.json's lowest val_loss is at epoch {expected}")
+    return errors
+
+
 VALIDATORS = {
     "history.json": validate_history,
     "metrics.json": validate_metrics,
     "profile.json": validate_profile,
+    "selection.json": validate_selection,
 }
 
 
@@ -163,7 +211,7 @@ def validate_file(path: Path) -> list[str]:
 def validate_run_dir(directory: Path) -> list[str]:
     """Validate a complete run directory, including that nothing is missing."""
     errors: list[str] = []
-    for name in ("history.json", "metrics.json", "profile.json"):
+    for name in VALIDATORS:
         path = directory / name
         if not path.exists():
             errors.append(f"{directory.name}: missing {name}")
@@ -171,4 +219,10 @@ def validate_run_dir(directory: Path) -> list[str]:
             errors += validate_file(path)
     if not (directory / "config.yaml").exists():
         errors.append(f"{directory.name}: missing config.yaml")
+
+    if not errors:
+        history = json.loads((directory / "history.json").read_text(encoding="utf-8"))
+        selection = json.loads((directory / "selection.json").read_text(encoding="utf-8"))
+        errors += [f"{directory.name}/{e}"
+                   for e in check_selection_matches_history(selection, history)]
     return errors
