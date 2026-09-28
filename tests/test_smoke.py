@@ -48,7 +48,8 @@ def test_run_completes_within_the_ci_budget(smoke_run):
 
 def test_all_contract_files_are_written(smoke_run):
     out, _ = smoke_run
-    for name in ("config.yaml", "history.json", "metrics.json", "profile.json", "model.pt"):
+    for name in ("config.yaml", "history.json", "metrics.json", "profile.json",
+                 "selection.json", "model.pt"):
         assert (out / name).exists(), f"missing {name}"
 
 
@@ -93,3 +94,42 @@ def test_profile_reports_real_numbers(smoke_run):
     assert profile["macs"] > 0
     assert profile["macs_per_layer"]
     assert profile["input_shape"] == [1, 3, 64, 64]
+
+
+def test_selected_epoch_is_the_lowest_val_loss_in_history(smoke_run):
+    """#6: the run records which epoch it kept, and it is the one history justifies."""
+    out, _ = smoke_run
+    history = json.loads((out / "history.json").read_text(encoding="utf-8"))
+    selection = json.loads((out / "selection.json").read_text(encoding="utf-8"))
+    best = min(history, key=lambda r: (r["val_loss"], r["epoch"]))
+    assert selection["criterion"] == "val_loss"
+    assert selection["best_epoch"] == best["epoch"]
+    assert selection["best_val_loss"] == best["val_loss"]
+    assert selection["epochs_trained"] == len(history)
+
+
+def test_evaluated_weights_are_the_saved_checkpoint(smoke_run):
+    """metrics.json must describe model.pt, not whatever the final epoch left in memory.
+
+    Re-evaluating the saved checkpoint on the same synthetic test split has to
+    reproduce the recorded accuracy exactly.
+    """
+    import torch
+
+    from pr_edge.config import load_config
+    from pr_edge.data import get_synthetic_dataloaders
+    from pr_edge.device import set_seed
+    from pr_edge.evaluate import _predict
+    from pr_edge.models import build_model
+
+    from scripts.run_experiment import SMOKE_OVERRIDES
+
+    out, _ = smoke_run
+    cfg = load_config(CONFIGS_DIR / "model_b.yaml", SMOKE_OVERRIDES)
+    set_seed(cfg.seed)
+    _, _, test_loader = get_synthetic_dataloaders(cfg)
+    model = build_model(cfg)
+    model.load_state_dict(torch.load(out / "model.pt", weights_only=True))
+    y_true, y_pred = _predict(model, test_loader, torch.device("cpu"))
+    metrics = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
+    assert (y_true == y_pred).mean() == pytest.approx(metrics["accuracy"])
