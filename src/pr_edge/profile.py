@@ -90,6 +90,55 @@ def count_macs(model: nn.Module, input_shape: tuple[int, ...]) -> tuple[int, dic
     return sum(per_layer.values()), per_layer
 
 
+# Parameter-free layers the table leaves out, as Keras's model.summary() folds
+# activations into the layer they follow (CNNs.pdf p54 lists no ReLU rows).
+_TABLE_SKIP = (nn.ReLU, nn.ReLU6, nn.LeakyReLU, nn.Dropout)
+
+
+def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]:
+    """A ``model.summary()``-style table: one row per layer, in execution order.
+
+    Each row is ``{"name", "type", "output_shape", "params"}``, where
+    ``output_shape`` excludes the batch dimension and ``params`` counts only that
+    layer's own weights and biases. The format mirrors the Keras summary shown
+    in CNNs.pdf p54 so the report's architecture tables read like the slides.
+
+    Rows come from a real forward pass of one image, so the shapes are the ones
+    the model actually produces rather than ones derived on paper - which is
+    what #11's hand derivation is then checked against.
+    """
+    rows: list[dict] = []
+    handles = []
+
+    def hook(name: str):
+        def record(module: nn.Module, _inputs, output: torch.Tensor) -> None:
+            rows.append({
+                "name": name,
+                "type": type(module).__name__,
+                "output_shape": list(output.shape[1:]),
+                "params": sum(p.numel() for p in module.parameters(recurse=False)),
+            })
+        return record
+
+    for name, module in model.named_modules():
+        is_leaf = next(module.children(), None) is None
+        if name and is_leaf and not isinstance(module, _TABLE_SKIP):
+            handles.append(module.register_forward_hook(hook(name)))
+
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+    try:
+        with torch.no_grad():
+            model(torch.zeros(1, *input_shape[1:], device=device))
+    finally:
+        for handle in handles:
+            handle.remove()
+        model.train(was_training)
+
+    return rows
+
+
 def profile_model(
     model: nn.Module,
     cfg: Config,

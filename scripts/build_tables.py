@@ -16,11 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from pr_edge.paths import DATA_DIR, REPORT_DIR  # noqa: E402
+from pr_edge.paths import CONFIGS_DIR, DATA_DIR, REPORT_DIR  # noqa: E402
 from pr_edge.tables import (  # noqa: E402
     build_custom_comparison,
     build_dataset_table,
     build_final_comparison,
+    build_layer_table,
     build_sota_comparison,
 )
 
@@ -29,6 +30,9 @@ TABLES_DIR = REPORT_DIR / "tables"
 # Which runs feed which table. Fixed here so no issue has to guess, and so a
 # missing run fails loudly rather than producing a table with a gap in it.
 BUILDERS = {
+    # Architecture tables are built from the configs, not from runs: they need
+    # no training, only the model the config describes.
+    "model_a_layers": lambda: build_layer_table(CONFIGS_DIR / "model_a.yaml", TABLES_DIR / "model_a_layers.tex"),
     "dataset": lambda: build_dataset_table(DATA_DIR / "splits.csv", TABLES_DIR / "dataset.tex"),
     "custom": lambda: build_custom_comparison(["model_a", "model_b"], TABLES_DIR / "custom_comparison.tex"),
     "sota": lambda: build_sota_comparison(
