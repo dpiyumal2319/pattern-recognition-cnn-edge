@@ -99,13 +99,15 @@ that `cd`s after cloning. Absolute paths pass through untouched.
 ### `src/pr_edge/schemas.py`
 
 ```python
-HISTORY_FIELDS, METRICS_FIELDS, PER_CLASS_FIELDS, PROFILE_FIELDS: dict[str, tuple]
+HISTORY_FIELDS, METRICS_FIELDS, PER_CLASS_FIELDS, PROFILE_FIELDS, SELECTION_FIELDS: dict[str, tuple]
 
 def validate_history(data: Any) -> list[str]        # violations; an empty list means valid
 def validate_metrics(data: Any) -> list[str]
 def validate_profile(data: Any) -> list[str]
+def validate_selection(data: Any) -> list[str]
+def check_selection_matches_history(selection: Any, history: Any) -> list[str]   # best_epoch = argmin val_loss
 def validate_file(path: Path) -> list[str]          # dispatches on filename
-def validate_run_dir(directory: Path) -> list[str]  # also reports missing files
+def validate_run_dir(directory: Path) -> list[str]  # also reports missing files; cross-checks selection vs history
 ```
 
 The machine-checkable form of section 3 below - prose cannot fail a build. Deliberately
@@ -170,12 +172,18 @@ All models return **raw logits**, never softmax. Loss is `CrossEntropyLoss`, whi
 ### `src/pr_edge/train.py`
 
 ```python
-def train(model: nn.Module, cfg: Config) -> list[dict]       # the history records; also writes history.json  [#6]
+def train(model: nn.Module, cfg: Config, train_loader: DataLoader, val_loader: DataLoader,
+          device: torch.device, out_dir: Path) -> list[dict]
+    # the history records; also writes history.json, model.pt and selection.json   [#6]
 def build_optimizer(model: nn.Module, cfg: OptimizerConfig) -> torch.optim.Optimizer                          [#6]
 ```
 
-Best checkpoint is selected by **lowest validation loss** and saved to `model.pt`. The test set is
-touched exactly once, after training, by `evaluate`.
+Best checkpoint is selected by **lowest validation loss** and saved to `model.pt`. Ties go to the
+earlier epoch; non-finite losses are never selected. Before returning, `train` **restores the
+selected weights into `model`**, so the caller's `evaluate` and `profile_model` describe the same
+weights as `model.pt`. `history.json` is rewritten every epoch and `model.pt` on each improvement,
+both atomically, so an interrupted run keeps its best checkpoint. The test set is touched exactly
+once, after training, by `evaluate`.
 
 ### `src/pr_edge/evaluate.py`
 
@@ -290,6 +298,24 @@ Definitions, fixed so two people cannot report different numbers for the same mo
 - **`mean_epoch_seconds`** — mean of `history.json`'s `epoch_seconds`.
 - **`device_name`** — recorded because epoch time is a graded column and is meaningless without it.
 
+### `selection.json`
+
+Which epoch `model.pt` holds, so the report can cite it rather than implying the model trained
+monotonically to its best result.
+
+```json
+{
+  "criterion": "val_loss",
+  "best_epoch": 14,
+  "best_val_loss": 0.3121,
+  "best_val_acc": 0.9012,
+  "epochs_trained": 30
+}
+```
+
+`best_val_loss` and `best_val_acc` are copied from that epoch's `history.json` record. `validate_run_dir`
+checks that `best_epoch` is the first epoch holding the lowest finite `val_loss` in `history.json`.
+
 ### Run directory layout
 
 ```
@@ -298,6 +324,7 @@ results/<run_id>/
   history.json
   metrics.json
   profile.json
+  selection.json   which epoch model.pt holds
   model.pt         gitignored
   figures/*.png
 ```
@@ -339,8 +366,9 @@ not done until its test file passes.
 |---|---|---|
 | `tests/test_config.py` | #1 | Round-trip load/dump; unknown keys raise |
 | `tests/test_device.py` | #1 | `set_seed` makes two runs bit-identical |
-| `tests/test_schemas.py` | #1 | Every committed `results/*/[history\|metrics\|profile].json` validates |
-| `tests/test_smoke.py` | #1 | `run_experiment.py --smoke` writes a conformant run dir in under 60s |
+| `tests/test_schemas.py` | #1 | Every committed `results/*/[history\|metrics\|profile\|selection].json` validates |
+| `tests/test_smoke.py` | #1, #6 | `run_experiment.py --smoke` writes a conformant run dir in under 60s |
+| `tests/test_train.py` | #6 | `model.pt` and the returned model hold the lowest-val-loss epoch, not the last |
 | `tests/test_data.py` | #2, #3 | Split is stratified, 70/15/15, deterministic; norm stats are train-only |
 | `tests/test_metrics.py` | #4 | Accuracy, precision, recall match a hand-computed example |
 | `tests/test_profile.py` | #5 | Reproduces the `CNNs.pdf` example: ~590k ops standard vs ~67.8k separable |
