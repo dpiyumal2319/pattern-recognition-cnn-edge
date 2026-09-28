@@ -39,6 +39,9 @@ class ModelConfig:
     name: str = "model_b"
     num_classes: int = 10
     channels: list[int] = field(default_factory=lambda: [32, 64, 128])
+    # Hidden dense widths between the feature extractor and the output layer.
+    # Model A only (#9): [128, 64] mirrors the example CNN in CNNs.pdf p54.
+    fc_units: list[int] = field(default_factory=lambda: [128, 64])
     head: str = "gap"
     dropout: float = 0.2
     pretrained: bool = False

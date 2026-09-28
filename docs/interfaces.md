@@ -33,6 +33,7 @@ model:
   name: model_b            # model_a | model_b | mobilenet_v2 | efficientnet_b0
   num_classes: 10
   channels: [32, 64, 128]  # custom models only
+  fc_units: [128, 64]      # Model A's hidden dense widths (CNNs.pdf p54); optional, default [128, 64]
   head: gap                # gap | flatten  (custom models only)
   dropout: 0.2
   pretrained: false        # SOTA only
@@ -155,8 +156,9 @@ def build_model(cfg: Config) -> nn.Module        # registry dispatch on cfg.mode
 
 # model_a.py   [#9]
 class ModelA(nn.Module):
+    IN_CHANNELS = 3; INPUT_SIZE = 64             # the Flatten head fixes the input; other sizes raise ValueError
     def __init__(self, cfg: ModelConfig) -> None
-    def forward(self, x: Tensor) -> Tensor       # (N,3,H,W) -> (N, num_classes) logits
+    def forward(self, x: Tensor) -> Tensor       # (N,3,64,64) -> (N, num_classes) logits
 
 # model_b.py   [#10]
 class ModelB(nn.Module): ...                     # same signature as ModelA
@@ -197,6 +199,9 @@ def evaluate(model: nn.Module, loader: DataLoader, cfg: Config, split: str = "te
 def count_parameters(model: nn.Module) -> tuple[int, int]            # (total, trainable)           [#5]
 def count_macs(model: nn.Module, input_shape: tuple[int, ...]) -> tuple[int, dict[str, int]]        # [#5]
 def state_dict_bytes(model: nn.Module) -> int                        # measured from an actual save [#5]
+def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]
+    # model.summary()-style rows {name, type, output_shape, params}, execution order,
+    # ReLU/Dropout omitted as in CNNs.pdf p54                                                  [#9]
 def profile_model(model: nn.Module, cfg: Config, mean_epoch_seconds: float) -> dict                 # [#5]
 ```
 
@@ -214,7 +219,11 @@ def build_dataset_table(manifest: Path, out: Path) -> Path                [#24]
 def build_custom_comparison(run_ids: list[str], out: Path) -> Path        [#18]
 def build_sota_comparison(run_ids: list[str], out: Path) -> Path          [#22]
 def build_final_comparison(run_ids: list[str], out: Path) -> Path         [#25]
+def build_layer_table(config: Path, out: Path) -> Path                   [#9, #10]
 ```
+
+`build_layer_table` builds the model from a config (no training run needed) and writes its per-layer
+output shapes and parameter counts: `report/tables/model_a_layers.tex` (#9), `model_b_layers.tex` (#10).
 
 Each emits a LaTeX `tabular` fragment for `\input{}`. No `\begin{table}` wrapper — the caption and
 placement belong to the report, not the generator.
@@ -336,7 +345,7 @@ results/<run_id>/
 ```bash
 python scripts/prepare_data.py  --config configs/base.yaml [--force]
 python scripts/run_experiment.py --config configs/model_b.yaml [--smoke] [--epochs N] [--device D] [--run-id ID]
-python scripts/build_tables.py  [--all | --table custom|sota|dataset|final]
+python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers]
 ```
 
 Command-line flags override the config file; the **resolved** values are what gets dumped to
