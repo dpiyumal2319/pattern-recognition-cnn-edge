@@ -28,6 +28,21 @@ _LAYER_NAMES = {
 }
 
 
+def _layer_kind(row: dict) -> str:
+    """Report name for one layer_table row.
+
+    The two stages of a depthwise separable block are both nn.Conv2d, so they
+    are told apart by shape: a grouped convolution is the depthwise step and a
+    1x1 convolution is the pointwise step, the two names CNNs.pdf p44 uses.
+    """
+    if row["type"] == "Conv2d":
+        if row["groups"] and row["groups"] > 1:
+            return "DepthwiseConv2D"
+        if row["kernel_size"] == [1, 1]:
+            return "PointwiseConv2D"
+    return _LAYER_NAMES.get(row["type"], row["type"])
+
+
 def _thousands(n: int) -> str:
     """18496 -> 18{,}496 - a LaTeX thousands separator with correct spacing."""
     return f"{n:,}".replace(",", "{,}")
@@ -53,7 +68,7 @@ def build_layer_table(config: Path, out: Path) -> Path:
     rows = layer_table(model, input_shape)
     total, _ = count_parameters(model)
 
-    kinds = [_LAYER_NAMES.get(row["type"], row["type"]) for row in rows]
+    kinds = [_layer_kind(row) for row in rows]
     counters: dict[str, int] = {}
     lines = [
         r"\begin{tabular}{llr}",

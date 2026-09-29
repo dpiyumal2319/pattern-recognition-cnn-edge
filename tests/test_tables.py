@@ -53,12 +53,25 @@ def test_layer_table_is_reproducible_with_unix_line_endings(tmp_path):
     assert b"\r\n" not in first
 
 
-def test_committed_model_a_layer_table_is_current(tmp_path):
-    """The committed table must match what the current code generates.
+@pytest.mark.parametrize("model", ["model_a", "model_b"])
+def test_committed_layer_tables_are_current(tmp_path, model):
+    """The committed tables must match what the current code generates.
 
-    If this fails, the model or config changed without rerunning
-    scripts/build_tables.py --table model_a_layers - the report would be stale.
+    If this fails, a model or config changed without rerunning
+    scripts/build_tables.py --table <model>_layers - the report would be stale.
     """
-    committed = REPORT_DIR / "tables" / "model_a_layers.tex"
-    fresh = build_layer_table(CONFIGS_DIR / "model_a.yaml", tmp_path / "fresh.tex")
+    committed = REPORT_DIR / "tables" / f"{model}_layers.tex"
+    fresh = build_layer_table(CONFIGS_DIR / f"{model}.yaml", tmp_path / "fresh.tex")
     assert committed.read_bytes() == fresh.read_bytes()
+
+
+def test_model_b_table_names_the_depthwise_and_pointwise_steps(tmp_path):
+    """The vocabulary of CNNs.pdf p44, one row per step, so #11 can cite each."""
+    text = build_layer_table(CONFIGS_DIR / "model_b.yaml", tmp_path / "b.tex").read_text(encoding="utf-8")
+    assert r"DepthwiseConv2D 1 & $3 \times 62 \times 62$ & 30 \\" in text
+    assert r"PointwiseConv2D 1 & $32 \times 62 \times 62$ & 128 \\" in text
+    assert r"PointwiseConv2D 3 & $128 \times 12 \times 12$ & 8{,}320 \\" in text
+    assert r"GlobalAveragePooling2D & $128 \times 1 \times 1$ & 0 \\" in text
+    assert r"Total & & 36{,}968 \\" in text
+    # A standard convolution never appears in Model B.
+    assert "\nConv2D" not in text

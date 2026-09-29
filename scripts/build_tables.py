@@ -33,6 +33,7 @@ BUILDERS = {
     # Architecture tables are built from the configs, not from runs: they need
     # no training, only the model the config describes.
     "model_a_layers": lambda: build_layer_table(CONFIGS_DIR / "model_a.yaml", TABLES_DIR / "model_a_layers.tex"),
+    "model_b_layers": lambda: build_layer_table(CONFIGS_DIR / "model_b.yaml", TABLES_DIR / "model_b_layers.tex"),
     "dataset": lambda: build_dataset_table(DATA_DIR / "splits.csv", TABLES_DIR / "dataset.tex"),
     "custom": lambda: build_custom_comparison(["model_a", "model_b"], TABLES_DIR / "custom_comparison.tex"),
     "sota": lambda: build_sota_comparison(
