@@ -33,7 +33,7 @@ model:
   name: model_b            # model_a | model_b | mobilenet_v2 | efficientnet_b0
   num_classes: 10
   channels: [32, 64, 128]  # custom models only
-  fc_units: [128, 64]      # Model A's hidden dense widths (CNNs.pdf p54); optional, default [128, 64]
+  fc_units: [128, 64]      # custom models' hidden dense widths (CNNs.pdf p54); optional, default [128, 64]
   head: gap                # gap | flatten  (custom models only)
   dropout: 0.2
   pretrained: false        # SOTA only
@@ -164,6 +164,14 @@ class ModelA(nn.Module):
 class ModelB(nn.Module): ...                     # same signature as ModelA
 class DepthwiseSeparableBlock(nn.Module):        # depthwise 3x3 then pointwise 1x1, separately inspectable
     def __init__(self, in_ch: int, out_ch: int, stride: int = 1) -> None
+    depthwise: nn.Conv2d                         # 3x3, groups=in_ch, unpadded like Model A
+    pointwise: nn.Conv2d                         # 1x1, in_ch -> out_ch; no activation between the two (CNNs.pdf p44)
+```
+
+`ModelB` subclasses `ModelA` and overrides only the per-stage convolution, so the two models differ
+by exactly the depthwise separable substitution plus `head: gap` from the config.
+
+```python
 
 # sota.py      [#19]
 def build_sota(cfg: Config) -> nn.Module         # torchvision backbone, replaced head, freeze policy applied
@@ -200,8 +208,9 @@ def count_parameters(model: nn.Module) -> tuple[int, int]            # (total, t
 def count_macs(model: nn.Module, input_shape: tuple[int, ...]) -> tuple[int, dict[str, int]]        # [#5]
 def state_dict_bytes(model: nn.Module) -> int                        # measured from an actual save [#5]
 def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]
-    # model.summary()-style rows {name, type, output_shape, params}, execution order,
-    # ReLU/Dropout omitted as in CNNs.pdf p54                                                  [#9]
+    # model.summary()-style rows {name, type, output_shape, params, kernel_size, groups},
+    # execution order, ReLU/Dropout omitted as in CNNs.pdf p54; kernel_size/groups are None
+    # for non-conv layers, and groups > 1 marks a depthwise convolution               [#9, #10]
 def profile_model(model: nn.Module, cfg: Config, mean_epoch_seconds: float) -> dict                 # [#5]
 ```
 
@@ -345,7 +354,7 @@ results/<run_id>/
 ```bash
 python scripts/prepare_data.py  --config configs/base.yaml [--force]
 python scripts/run_experiment.py --config configs/model_b.yaml [--smoke] [--epochs N] [--device D] [--run-id ID]
-python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers]
+python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers|model_b_layers]
 ```
 
 Command-line flags override the config file; the **resolved** values are what gets dumped to
