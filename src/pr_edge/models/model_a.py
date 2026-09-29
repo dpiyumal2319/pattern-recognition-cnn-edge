@@ -86,7 +86,7 @@ class ModelA(nn.Module):
         in_ch = self.IN_CHANNELS
         for out_ch in channels:
             layers += [
-                nn.Conv2d(in_ch, out_ch, kernel_size=KERNEL_SIZE),  # valid: no padding
+                self._convolution(in_ch, out_ch),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(kernel_size=POOL_SIZE, stride=POOL_SIZE),
             ]
@@ -118,6 +118,15 @@ class ModelA(nn.Module):
         # no dropout sits directly in front of the class scores.
         head.append(nn.Linear(width, cfg.num_classes))
         self.classifier = nn.Sequential(*head)
+
+    def _convolution(self, in_ch: int, out_ch: int) -> nn.Module:
+        """The convolution of one stage: a standard valid 3x3.
+
+        The single point Model B overrides - it swaps this for a depthwise
+        separable block and changes nothing else, which is what makes the
+        A-vs-B comparison attributable to that substitution alone.
+        """
+        return nn.Conv2d(in_ch, out_ch, kernel_size=KERNEL_SIZE)  # valid: no padding
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """(N, 3, 64, 64) -> (N, num_classes) logits."""
