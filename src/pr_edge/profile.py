@@ -98,9 +98,11 @@ _TABLE_SKIP = (nn.ReLU, nn.ReLU6, nn.LeakyReLU, nn.Dropout)
 def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]:
     """A ``model.summary()``-style table: one row per layer, in execution order.
 
-    Each row is ``{"name", "type", "output_shape", "params"}``, where
-    ``output_shape`` excludes the batch dimension and ``params`` counts only that
-    layer's own weights and biases. The format mirrors the Keras summary shown
+    Each row is ``{"name", "type", "output_shape", "params", "kernel_size",
+    "groups"}``, where ``output_shape`` excludes the batch dimension, ``params``
+    counts only that layer's own weights and biases, and ``kernel_size`` and
+    ``groups`` are set for convolutions (``None`` otherwise) so a depthwise
+    convolution (groups == in_channels) can be told apart from a standard one. The format mirrors the Keras summary shown
     in CNNs.pdf p54 so the report's architecture tables read like the slides.
 
     Rows come from a real forward pass of one image, so the shapes are the ones
@@ -112,11 +114,14 @@ def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]:
 
     def hook(name: str):
         def record(module: nn.Module, _inputs, output: torch.Tensor) -> None:
+            is_conv = isinstance(module, nn.Conv2d)
             rows.append({
                 "name": name,
                 "type": type(module).__name__,
                 "output_shape": list(output.shape[1:]),
                 "params": sum(p.numel() for p in module.parameters(recurse=False)),
+                "kernel_size": list(module.kernel_size) if is_conv else None,
+                "groups": module.groups if is_conv else None,
             })
         return record
 
