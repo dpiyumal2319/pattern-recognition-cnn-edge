@@ -33,6 +33,7 @@ model:
   name: model_b            # model_a | model_b | mobilenet_v2 | efficientnet_b0
   num_classes: 10
   channels: [32, 64, 128]  # custom models only
+  fc_units: [128, 64]      # custom models' hidden dense widths (CNNs.pdf p54); optional, default [128, 64]
   head: gap                # gap | flatten  (custom models only)
   dropout: 0.2
   pretrained: false        # SOTA only
@@ -99,13 +100,15 @@ that `cd`s after cloning. Absolute paths pass through untouched.
 ### `src/pr_edge/schemas.py`
 
 ```python
-HISTORY_FIELDS, METRICS_FIELDS, PER_CLASS_FIELDS, PROFILE_FIELDS: dict[str, tuple]
+HISTORY_FIELDS, METRICS_FIELDS, PER_CLASS_FIELDS, PROFILE_FIELDS, SELECTION_FIELDS: dict[str, tuple]
 
 def validate_history(data: Any) -> list[str]        # violations; an empty list means valid
 def validate_metrics(data: Any) -> list[str]
 def validate_profile(data: Any) -> list[str]
+def validate_selection(data: Any) -> list[str]
+def check_selection_matches_history(selection: Any, history: Any) -> list[str]   # best_epoch = argmin val_loss
 def validate_file(path: Path) -> list[str]          # dispatches on filename
-def validate_run_dir(directory: Path) -> list[str]  # also reports missing files
+def validate_run_dir(directory: Path) -> list[str]  # also reports missing files; cross-checks selection vs history
 ```
 
 The machine-checkable form of section 3 below - prose cannot fail a build. Deliberately
@@ -153,13 +156,22 @@ def build_model(cfg: Config) -> nn.Module        # registry dispatch on cfg.mode
 
 # model_a.py   [#9]
 class ModelA(nn.Module):
+    IN_CHANNELS = 3; INPUT_SIZE = 64             # the Flatten head fixes the input; other sizes raise ValueError
     def __init__(self, cfg: ModelConfig) -> None
-    def forward(self, x: Tensor) -> Tensor       # (N,3,H,W) -> (N, num_classes) logits
+    def forward(self, x: Tensor) -> Tensor       # (N,3,64,64) -> (N, num_classes) logits
 
 # model_b.py   [#10]
 class ModelB(nn.Module): ...                     # same signature as ModelA
 class DepthwiseSeparableBlock(nn.Module):        # depthwise 3x3 then pointwise 1x1, separately inspectable
     def __init__(self, in_ch: int, out_ch: int, stride: int = 1) -> None
+    depthwise: nn.Conv2d                         # 3x3, groups=in_ch, unpadded like Model A
+    pointwise: nn.Conv2d                         # 1x1, in_ch -> out_ch; no activation between the two (CNNs.pdf p44)
+```
+
+`ModelB` subclasses `ModelA` and overrides only the per-stage convolution, so the two models differ
+by exactly the depthwise separable substitution plus `head: gap` from the config.
+
+```python
 
 # sota.py      [#19]
 def build_sota(cfg: Config) -> nn.Module         # torchvision backbone, replaced head, freeze policy applied
@@ -170,12 +182,18 @@ All models return **raw logits**, never softmax. Loss is `CrossEntropyLoss`, whi
 ### `src/pr_edge/train.py`
 
 ```python
-def train(model: nn.Module, cfg: Config) -> list[dict]       # the history records; also writes history.json  [#6]
+def train(model: nn.Module, cfg: Config, train_loader: DataLoader, val_loader: DataLoader,
+          device: torch.device, out_dir: Path) -> list[dict]
+    # the history records; also writes history.json, model.pt and selection.json   [#6]
 def build_optimizer(model: nn.Module, cfg: OptimizerConfig) -> torch.optim.Optimizer                          [#6]
 ```
 
-Best checkpoint is selected by **lowest validation loss** and saved to `model.pt`. The test set is
-touched exactly once, after training, by `evaluate`.
+Best checkpoint is selected by **lowest validation loss** and saved to `model.pt`. Ties go to the
+earlier epoch; non-finite losses are never selected. Before returning, `train` **restores the
+selected weights into `model`**, so the caller's `evaluate` and `profile_model` describe the same
+weights as `model.pt`. `history.json` is rewritten every epoch and `model.pt` on each improvement,
+both atomically, so an interrupted run keeps its best checkpoint. The test set is touched exactly
+once, after training, by `evaluate`.
 
 ### `src/pr_edge/evaluate.py`
 
@@ -189,6 +207,10 @@ def evaluate(model: nn.Module, loader: DataLoader, cfg: Config, split: str = "te
 def count_parameters(model: nn.Module) -> tuple[int, int]            # (total, trainable)           [#5]
 def count_macs(model: nn.Module, input_shape: tuple[int, ...]) -> tuple[int, dict[str, int]]        # [#5]
 def state_dict_bytes(model: nn.Module) -> int                        # measured from an actual save [#5]
+def layer_table(model: nn.Module, input_shape: tuple[int, ...]) -> list[dict]
+    # model.summary()-style rows {name, type, output_shape, params, kernel_size, groups},
+    # execution order, ReLU/Dropout omitted as in CNNs.pdf p54; kernel_size/groups are None
+    # for non-conv layers, and groups > 1 marks a depthwise convolution               [#9, #10]
 def profile_model(model: nn.Module, cfg: Config, mean_epoch_seconds: float) -> dict                 # [#5]
 ```
 
@@ -206,7 +228,11 @@ def build_dataset_table(manifest: Path, out: Path) -> Path                [#24]
 def build_custom_comparison(run_ids: list[str], out: Path) -> Path        [#18]
 def build_sota_comparison(run_ids: list[str], out: Path) -> Path          [#22]
 def build_final_comparison(run_ids: list[str], out: Path) -> Path         [#25]
+def build_layer_table(config: Path, out: Path) -> Path                   [#9, #10]
 ```
+
+`build_layer_table` builds the model from a config (no training run needed) and writes its per-layer
+output shapes and parameter counts: `report/tables/model_a_layers.tex` (#9), `model_b_layers.tex` (#10).
 
 Each emits a LaTeX `tabular` fragment for `\input{}`. No `\begin{table}` wrapper — the caption and
 placement belong to the report, not the generator.
@@ -290,6 +316,24 @@ Definitions, fixed so two people cannot report different numbers for the same mo
 - **`mean_epoch_seconds`** — mean of `history.json`'s `epoch_seconds`.
 - **`device_name`** — recorded because epoch time is a graded column and is meaningless without it.
 
+### `selection.json`
+
+Which epoch `model.pt` holds, so the report can cite it rather than implying the model trained
+monotonically to its best result.
+
+```json
+{
+  "criterion": "val_loss",
+  "best_epoch": 14,
+  "best_val_loss": 0.3121,
+  "best_val_acc": 0.9012,
+  "epochs_trained": 30
+}
+```
+
+`best_val_loss` and `best_val_acc` are copied from that epoch's `history.json` record. `validate_run_dir`
+checks that `best_epoch` is the first epoch holding the lowest finite `val_loss` in `history.json`.
+
 ### Run directory layout
 
 ```
@@ -298,6 +342,7 @@ results/<run_id>/
   history.json
   metrics.json
   profile.json
+  selection.json   which epoch model.pt holds
   model.pt         gitignored
   figures/*.png
 ```
@@ -309,7 +354,7 @@ results/<run_id>/
 ```bash
 python scripts/prepare_data.py  --config configs/base.yaml [--force]
 python scripts/run_experiment.py --config configs/model_b.yaml [--smoke] [--epochs N] [--device D] [--run-id ID]
-python scripts/build_tables.py  [--all | --table custom|sota|dataset|final]
+python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers|model_b_layers]
 ```
 
 Command-line flags override the config file; the **resolved** values are what gets dumped to
@@ -339,8 +384,9 @@ not done until its test file passes.
 |---|---|---|
 | `tests/test_config.py` | #1 | Round-trip load/dump; unknown keys raise |
 | `tests/test_device.py` | #1 | `set_seed` makes two runs bit-identical |
-| `tests/test_schemas.py` | #1 | Every committed `results/*/[history\|metrics\|profile].json` validates |
-| `tests/test_smoke.py` | #1 | `run_experiment.py --smoke` writes a conformant run dir in under 60s |
+| `tests/test_schemas.py` | #1 | Every committed `results/*/[history\|metrics\|profile\|selection].json` validates |
+| `tests/test_smoke.py` | #1, #6 | `run_experiment.py --smoke` writes a conformant run dir in under 60s |
+| `tests/test_train.py` | #6 | `model.pt` and the returned model hold the lowest-val-loss epoch, not the last |
 | `tests/test_data.py` | #2, #3 | Split is stratified, 70/15/15, deterministic; norm stats are train-only |
 | `tests/test_metrics.py` | #4 | Accuracy, precision, recall match a hand-computed example |
 | `tests/test_profile.py` | #5 | Reproduces the `CNNs.pdf` example: ~590k ops standard vs ~67.8k separable |

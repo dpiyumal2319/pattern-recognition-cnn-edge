@@ -1,0 +1,18 @@
+\begin{tabular}{llr}
+\hline
+Layer & Output shape ($C \times H \times W$) & Parameters \\
+\hline
+Conv2D 1 & $32 \times 62 \times 62$ & 896 \\
+MaxPooling2D 1 & $32 \times 31 \times 31$ & 0 \\
+Conv2D 2 & $64 \times 29 \times 29$ & 18{,}496 \\
+MaxPooling2D 2 & $64 \times 14 \times 14$ & 0 \\
+Conv2D 3 & $128 \times 12 \times 12$ & 73{,}856 \\
+MaxPooling2D 3 & $128 \times 6 \times 6$ & 0 \\
+Flatten & $4608$ & 0 \\
+Dense 1 & $128$ & 589{,}952 \\
+Dense 2 & $64$ & 8{,}256 \\
+Dense 3 & $10$ & 650 \\
+\hline
+Total & & 692{,}106 \\
+\hline
+\end{tabular}

@@ -19,9 +19,22 @@ backbones, on accuracy, memory footprint and computational cost.
 
 ## Quickstart — local
 
+Requires Python 3.10 or newer and Git. Clone the repository, then create an
+isolated environment from the repository root:
+
 ```bash
-python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt && pip install -e .
+git clone https://github.com/dpiyumal2319/pattern-recognition-cnn-edge.git
+cd pattern-recognition-cnn-edge
+python -m venv .venv
+```
+
+Activate it with `source .venv/bin/activate` on macOS/Linux or
+`.\.venv\Scripts\Activate.ps1` in Windows PowerShell, then install the project:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 Prove the pipeline works without downloading anything (about 3 seconds):
@@ -30,13 +43,18 @@ Prove the pipeline works without downloading anything (about 3 seconds):
 python scripts/run_experiment.py --config configs/model_b.yaml --smoke
 ```
 
-Then the real thing:
+Prepare EuroSAT once, then run an experiment and generate report inputs:
 
 ```bash
 python scripts/prepare_data.py --config configs/base.yaml
 python scripts/run_experiment.py --config configs/model_b.yaml
 python scripts/build_tables.py --all
 ```
+
+Each experiment writes its resolved configuration, history, test metrics,
+resource profile, checkpoint selection, and best checkpoint to
+`results/<run_id>/`. The dataset and checkpoints are intentionally ignored by
+Git; JSON results and generated figures are committed for the report.
 
 Data preparation caches RGB channel means and population standard deviations in
 `data.norm_stats` (default `data/norm_stats.json`). They come exclusively from the
@@ -75,8 +93,42 @@ text is in `report/sections/data_preparation.tex` for the final report assembly.
 
 Colab is the canonical compute environment: every member gets the same free T4 regardless of their
 laptop, which matters because *training time per epoch* is a graded column and only comparable
-across identical hardware. `notebooks/colab_run.ipynb` (issue #7) clones the repo, installs
-dependencies, caches the dataset to Drive and calls the same scripts.
+across identical hardware. The canonical driver is
+[`notebooks/colab_run.ipynb`](notebooks/colab_run.ipynb).
+
+1. Open the notebook in Colab. While the repository is private, upload the
+   notebook or authorize Colab's GitHub browser.
+2. Choose **Runtime → Change runtime type → T4 GPU**.
+3. Create a fine-grained GitHub token with read access to this repository. Add
+   it to Colab's **Secrets** panel as `GITHUB_TOKEN`, enable notebook access,
+   and never paste it into a code cell.
+4. Review `BRANCH`, `CONFIG_PATH`, `RUN_PREPARE_DATA`, and `SMOKE` in the first
+   code cell, then choose **Runtime → Run all**.
+5. Approve the Drive mount. The first real run downloads EuroSAT; later
+   runtimes reuse `MyDrive/EN3150_A03/data/eurosat/`.
+
+The notebook calls `scripts/prepare_data.py` and `scripts/run_experiment.py`;
+it contains no separate model or training implementation. Completed run
+directories are copied to `MyDrive/EN3150_A03/results/<run_id>/`, including the
+best checkpoint, so a Colab disconnect does not lose the artifacts. The local
+`profile.json` also records the exact device name used for timing comparisons.
+
+To test the complete wiring without downloading EuroSAT or using a GPU, set
+`SMOKE = True`; the notebook then produces `_smoke_<run_id>` artifacts.
+
+### Notebook hygiene
+
+CI rejects notebooks with saved outputs or execution counts. Install the
+repository's pre-commit hook once in each development clone:
+
+```bash
+python -m pip install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+The pinned `nbstripout` hook strips notebook outputs automatically before each
+commit. This supplements the CI check and prevents output-only merge conflicts.
 
 ## Running the tests
 

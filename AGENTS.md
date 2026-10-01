@@ -226,7 +226,8 @@ Every experiment writes `results/<run_id>/`:
 | `history.json` | `[{epoch, train_loss, val_loss, train_acc, val_acc, epoch_seconds}, ...]` |
 | `metrics.json` | `{test_accuracy, macro_precision, macro_recall, per_class:{...}, confusion_matrix:[[...]]}` |
 | `profile.json` | `{total_params, trainable_params, disk_size_kb, macs, mean_epoch_seconds}` |
-| `model.pt` | Checkpoint (gitignored) |
+| `selection.json` | `{criterion, best_epoch, best_val_loss, best_val_acc, epochs_trained}` |
+| `model.pt` | Checkpoint of the **lowest-val-loss** epoch, not the last (gitignored) |
 | `figures/*.png` | Loss curves, confusion matrix heatmap |
 
 Run IDs are fixed so issues can reference each other's outputs before they exist:

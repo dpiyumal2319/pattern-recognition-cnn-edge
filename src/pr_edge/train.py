@@ -4,15 +4,21 @@ One loop serves every experiment in the project: both custom models, the three
 optimizer variants, and the fine-tuned SOTA models. Anything model-specific
 belongs in ``models/``, not here.
 
-Scope note: #1 provides a working minimal loop so that ``--smoke`` can run in
-CI from day one. #6 owns best-checkpoint-by-validation-loss selection and the
-hardening that goes with real training runs. See the PR discussion on #1.
+Model selection (#6): the checkpoint kept is the epoch with the lowest
+validation loss, not the last one, and those weights are restored into the
+model before ``train`` returns. The caller evaluates and profiles the in-memory
+model, so without the restore every test metric would describe the final epoch
+while ``model.pt`` held a different one. The chosen epoch is recorded in
+``selection.json`` so the report can cite it.
 """
 
 from __future__ import annotations
 
 import json
+import math
+import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -78,6 +84,32 @@ def _run_epoch(
     return total_loss / seen, correct / seen
 
 
+# The selection criterion, recorded in selection.json. Validation LOSS rather
+# than accuracy: accuracy only changes when an argmax flips, so it plateaus and
+# ties across epochs while the network is already growing confidently wrong on
+# held-out images. Loss is continuous and shows that overfitting first.
+SELECTION_CRITERION = "val_loss"
+
+
+def _atomic_write(path: Path, write: Callable[[Path], None]) -> None:
+    """Write via a sibling temp file, then rename over ``path``.
+
+    A Colab runtime can disconnect at any moment. ``os.replace`` is atomic, so
+    ``path`` always holds either the previous complete file or the new one -
+    never a truncated checkpoint that fails to load at evaluation time.
+    """
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        write(temporary)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_json(path: Path, data: object) -> None:
+    _atomic_write(path, lambda tmp: tmp.write_text(json.dumps(data, indent=2), encoding="utf-8"))
+
+
 def train(
     model: nn.Module,
     cfg: Config,
@@ -91,12 +123,26 @@ def train(
     Returns the history records. ``epoch_seconds`` times the training pass only
     and deliberately excludes validation, so the "training time per epoch"
     column in the report means what it says.
+
+    On return ``model`` holds the weights of the epoch with the lowest
+    validation loss (ties go to the earlier epoch), which is also what
+    ``model.pt`` contains. ``history.json`` is rewritten every epoch and
+    ``model.pt`` on every improvement, so an interrupted run still leaves its
+    best checkpoint and a readable history behind.
     """
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(model, cfg.optimizer)
     model.to(device)
 
+    checkpoint = out_dir / "model.pt"
+    selection_file = out_dir / "selection.json"
+    # A rerun into the same directory must not leave a previous run's weights
+    # or selection beside this run's history if it fails before its first save.
+    checkpoint.unlink(missing_ok=True)
+    selection_file.unlink(missing_ok=True)
+
     history: list[dict] = []
+    best: dict | None = None
 
     for epoch in range(1, cfg.training.epochs + 1):
         start = time.perf_counter()
@@ -105,30 +151,54 @@ def train(
 
         val_loss, val_acc = _run_epoch(model, val_loader, criterion, device)
 
-        history.append(
-            {
-                "epoch": epoch,
-                "train_loss": round(train_loss, 6),
-                "train_acc": round(train_acc, 6),
-                "val_loss": round(val_loss, 6),
-                "val_acc": round(val_acc, 6),
-                "epoch_seconds": round(epoch_seconds, 4),
-                "lr": optimizer.param_groups[0]["lr"],
-            }
+        record = {
+            "epoch": epoch,
+            "train_loss": round(train_loss, 6),
+            "train_acc": round(train_acc, 6),
+            "val_loss": round(val_loss, 6),
+            "val_acc": round(val_acc, 6),
+            "epoch_seconds": round(epoch_seconds, 4),
+            "lr": optimizer.param_groups[0]["lr"],
+        }
+        history.append(record)
+
+        # Compare the value as recorded in history.json, so anyone can re-derive
+        # the choice from that file alone. Strict "<" keeps the earlier epoch on
+        # a tie. A diverged (NaN/inf) epoch is never selected, but the run keeps
+        # going: divergence is itself a result the optimizer study reports.
+        improved = math.isfinite(record["val_loss"]) and (
+            best is None or record["val_loss"] < best["val_loss"]
         )
+        if improved:
+            best = record
+            _atomic_write(checkpoint, lambda tmp: torch.save(model.state_dict(), tmp))
+        _write_json(out_dir / "history.json", history)
 
         print(
             f"epoch {epoch:3d}/{cfg.training.epochs}  "
             f"train {train_loss:.4f}/{train_acc:.3f}  "
             f"val {val_loss:.4f}/{val_acc:.3f}  "
-            f"{epoch_seconds:.1f}s"
+            f"{epoch_seconds:.1f}s" + ("  *best" if improved else "")
         )
 
-    (out_dir / "history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+    if best is None:
+        raise RuntimeError(
+            "no epoch produced a finite validation loss - the run diverged from the "
+            "start, so there is no checkpoint to evaluate. history.json is kept."
+        )
 
-    # Final-epoch checkpoint. Selecting the BEST epoch by validation loss is
-    # #6's job - it needs real training runs to be worth anything, and on two
-    # epochs of random smoke data it would be noise.
-    torch.save(model.state_dict(), out_dir / "model.pt")
+    # Restore from the file rather than an in-memory copy, so the weights that
+    # get evaluated and profiled are provably the ones saved in model.pt.
+    model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
+
+    _write_json(selection_file, {
+        "criterion": SELECTION_CRITERION,
+        "best_epoch": best["epoch"],
+        "best_val_loss": best["val_loss"],
+        "best_val_acc": best["val_acc"],
+        "epochs_trained": len(history),
+    })
+    print(f"[select] epoch {best['epoch']}/{len(history)} by lowest val_loss "
+          f"({best['val_loss']:.4f}, val acc {best['val_acc']:.3f})")
 
     return history
