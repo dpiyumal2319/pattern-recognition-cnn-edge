@@ -1,0 +1,26 @@
+{
+  "run_id": "model_a",
+  "total_params": 692106,
+  "trainable_params": 692106,
+  "disk_size_bytes": 2773055,
+  "disk_size_kb": 2708.06,
+  "disk_size_mb": 2.6446,
+  "macs": 30038016,
+  "macs_per_layer": {
+    "features.0": 3321216,
+    "features.3": 15501312,
+    "features.6": 10616832,
+    "classifier.2": 589824,
+    "classifier.5": 8192,
+    "classifier.7": 640
+  },
+  "input_shape": [
+    1,
+    3,
+    64,
+    64
+  ],
+  "mean_epoch_seconds": 8.1403,
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 3060 Laptop GPU"
+}
