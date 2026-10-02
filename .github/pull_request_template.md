@@ -23,5 +23,4 @@ Closes #
 - [ ] Ran end to end; the artifacts above exist on disk
 - [ ] Artifacts match the contract in `AGENTS.md` section 3
 - [ ] Slide anchor for this issue was present in `docs/slides/` before any methodology was written
-- [ ] No AI co-authorship trailers in any commit
 - [ ] New or changed behaviour has tests in this PR, and the full `pytest` suite passes
