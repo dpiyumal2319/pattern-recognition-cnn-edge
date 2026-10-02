@@ -1,0 +1,206 @@
+{
+  "run_id": "model_b_sgd",
+  "split": "test",
+  "num_samples": 4050,
+  "class_names": [
+    "AnnualCrop",
+    "Forest",
+    "HerbaceousVegetation",
+    "Highway",
+    "Industrial",
+    "Pasture",
+    "PermanentCrop",
+    "Residential",
+    "River",
+    "SeaLake"
+  ],
+  "accuracy": 0.2348148148148148,
+  "macro_precision": 0.09215551267131525,
+  "macro_recall": 0.22604444444444444,
+  "macro_f1": 0.1289033742237468,
+  "per_class": {
+    "AnnualCrop": {
+      "precision": 0.17103882476390347,
+      "recall": 0.3622222222222222,
+      "f1": 0.23235923022095514,
+      "support": 450
+    },
+    "Forest": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 450
+    },
+    "HerbaceousVegetation": {
+      "precision": 0.15123456790123457,
+      "recall": 0.21777777777777776,
+      "f1": 0.17850637522768673,
+      "support": 450
+    },
+    "Highway": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 375
+    },
+    "Industrial": {
+      "precision": 0.36736958934517205,
+      "recall": 0.8826666666666667,
+      "f1": 0.5188087774294671,
+      "support": 375
+    },
+    "Pasture": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 300
+    },
+    "PermanentCrop": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 375
+    },
+    "Residential": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 450
+    },
+    "River": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 375
+    },
+    "SeaLake": {
+      "precision": 0.23191214470284238,
+      "recall": 0.7977777777777778,
+      "f1": 0.35935935935935936,
+      "support": 450
+    }
+  },
+  "confusion_matrix": [
+    [
+      163,
+      0,
+      67,
+      0,
+      183,
+      0,
+      0,
+      0,
+      0,
+      37
+    ],
+    [
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      449
+    ],
+    [
+      136,
+      0,
+      98,
+      0,
+      83,
+      0,
+      0,
+      0,
+      0,
+      133
+    ],
+    [
+      119,
+      0,
+      107,
+      0,
+      52,
+      0,
+      0,
+      0,
+      0,
+      97
+    ],
+    [
+      42,
+      0,
+      2,
+      0,
+      331,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      48,
+      0,
+      34,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      218
+    ],
+    [
+      147,
+      0,
+      50,
+      0,
+      138,
+      0,
+      0,
+      0,
+      0,
+      40
+    ],
+    [
+      173,
+      0,
+      143,
+      0,
+      100,
+      0,
+      0,
+      0,
+      0,
+      34
+    ],
+    [
+      92,
+      0,
+      90,
+      0,
+      12,
+      0,
+      0,
+      0,
+      0,
+      181
+    ],
+    [
+      33,
+      0,
+      56,
+      0,
+      2,
+      0,
+      0,
+      0,
+      0,
+      359
+    ]
+  ],
+  "confusion_matrix_convention": "rows=true, cols=predicted, order=class_names"
+}

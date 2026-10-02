@@ -23,6 +23,7 @@ model:
   freeze_backbone: false
 
 optimizer:
+  # Same SGD learning rate as model_b_sgd so m=0.9 is isolated.
   name: sgd
   lr: 0.01
   momentum: 0.9

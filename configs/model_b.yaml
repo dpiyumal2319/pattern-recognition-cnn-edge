@@ -23,6 +23,8 @@ model:
   freeze_backbone: false
 
 optimizer:
+  # Adaptive baseline: DNNs.pdf p108 says Adam is forgiving and reduces
+  # training error quickly during early baseline experiments.
   name: adam
   lr: 0.001
   momentum: 0.0

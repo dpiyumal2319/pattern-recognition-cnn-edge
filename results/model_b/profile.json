@@ -1,0 +1,29 @@
+{
+  "run_id": "model_b",
+  "total_params": 36968,
+  "trainable_params": 36968,
+  "disk_size_bytes": 154605,
+  "disk_size_kb": 150.98,
+  "disk_size_mb": 0.1474,
+  "macs": 3725196,
+  "macs_per_layer": {
+    "features.0.depthwise": 103788,
+    "features.0.pointwise": 369024,
+    "features.3.depthwise": 242208,
+    "features.3.pointwise": 1722368,
+    "features.6.depthwise": 82944,
+    "features.6.pointwise": 1179648,
+    "classifier.3": 16384,
+    "classifier.6": 8192,
+    "classifier.8": 640
+  },
+  "input_shape": [
+    1,
+    3,
+    64,
+    64
+  ],
+  "mean_epoch_seconds": 10.8328,
+  "device": "cuda",
+  "device_name": "Tesla T4"
+}
