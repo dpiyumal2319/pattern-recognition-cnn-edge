@@ -60,13 +60,14 @@ def test_momentum_figure_rejects_empty_history(tmp_path):
 
 def test_reuse_rejects_a_mismatched_resolved_config(tmp_path, monkeypatch):
     cfg = ablation._build_configs()[0]
-    directory = tmp_path / cfg.run_id
+    reuse_id = ablation.REUSE_RUNS[0.0]
+    directory = tmp_path / reuse_id
     directory.mkdir()
-    dump_config(replace(cfg, seed=7), directory / "config.yaml")
+    dump_config(replace(cfg, run_id=reuse_id, seed=7), directory / "config.yaml")
     monkeypatch.setattr(ablation, "RESULTS_DIR", tmp_path)
     monkeypatch.setattr(ablation, "validate_run_dir", lambda _directory: [])
     with pytest.raises(ValueError, match="resolved config does not match"):
-        ablation._reusable_history(cfg, ablation.parse_args([]))
+        ablation._reusable_history(0.0, cfg, ablation.parse_args([]))
 
 
 def test_main_runs_every_config_and_writes_smoke_figure(tmp_path, monkeypatch):

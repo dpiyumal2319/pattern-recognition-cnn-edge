@@ -38,11 +38,12 @@ from scripts import run_experiment  # noqa: E402
 
 BASE_CONFIG = CONFIGS_DIR / "model_b_sgd.yaml"
 MOMENTUM_RUNS = {
-    0.0: "model_b_sgd",
-    0.5: "model_b_sgdm05",
-    0.9: "model_b_sgdm",
-    0.99: "model_b_sgdm099",
+    0.0: "momentum_m000",
+    0.5: "momentum_m050",
+    0.9: "momentum_m090",
+    0.99: "momentum_m099",
 }
+REUSE_RUNS = {0.0: "model_b_sgd", 0.9: "model_b_sgdm"}
 LABELS = {momentum: f"m={momentum:g}" for momentum in MOMENTUM_RUNS}
 
 
@@ -100,17 +101,20 @@ def _resolved_config(cfg: Config, args: argparse.Namespace) -> dict:
     return expected
 
 
-def _reusable_history(cfg: Config, args: argparse.Namespace) -> Path | None:
+def _reusable_history(momentum: float, cfg: Config, args: argparse.Namespace) -> Path | None:
     """Return a validated existing history, or ``None`` when no run exists."""
-    directory = RESULTS_DIR / (f"_smoke_{cfg.run_id}" if args.smoke else cfg.run_id)
+    reuse_id = REUSE_RUNS.get(momentum, cfg.run_id)
+    directory = RESULTS_DIR / (f"_smoke_{reuse_id}" if args.smoke else reuse_id)
     if not directory.exists():
         return None
     errors = validate_run_dir(directory)
     if errors:
-        raise ValueError(f"cannot reuse incomplete run {cfg.run_id}: {errors}")
+        raise ValueError(f"cannot reuse incomplete run {reuse_id}: {errors}")
     actual = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
-    if actual != _resolved_config(cfg, args):
-        raise ValueError(f"cannot reuse {cfg.run_id}: resolved config does not match ablation")
+    expected = _resolved_config(cfg, args)
+    expected["run_id"] = reuse_id
+    if actual != expected:
+        raise ValueError(f"cannot reuse {reuse_id}: resolved config does not match ablation")
     return directory / "history.json"
 
 
@@ -161,10 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         temp_dir = Path(temp)
         for (momentum, _), cfg in zip(MOMENTUM_RUNS.items(), configs, strict=True):
             if args.reuse_existing:
-                existing = _reusable_history(cfg, args)
+                existing = _reusable_history(momentum, cfg, args)
                 if existing is not None:
                     histories[momentum] = existing
-                    print(f"[momentum] reusing {cfg.run_id} ({LABELS[momentum]})")
+                    print(f"[momentum] reusing {existing.parent.name} ({LABELS[momentum]})")
                     continue
 
             config_path = temp_dir / f"{cfg.run_id}.yaml"
