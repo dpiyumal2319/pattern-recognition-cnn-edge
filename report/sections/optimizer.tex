@@ -27,14 +27,24 @@ problem-specific.  The selected starting values, $10^{-3}$ for Adam and
 $10^{-2}$ for SGD, are conventional baselines for this comparison and are
 recorded in the resolved configuration of every run.
 
-Adam is the provisional optimizer for the final custom-model runs because the
-lecture notes describe adaptive methods as giving faster initial reductions
-in training error and greater stability.  The decision is tested rather than
-assumed: validation-loss curves from all three runs are overlaid in
-Figure~\ref{fig:optimizer-comparison}, and the lowest validation loss---not
-test accuracy---determines the chosen configuration.  Each run uses the same
-lowest-validation-loss checkpoint rule, making the comparison insensitive to
-a poorer final epoch.
+Adam at $\alpha=10^{-3}$ is selected for the final custom-model runs.  As shown
+in Table~\ref{tab:optimizer-comparison}, it achieved the lowest validation loss
+and the highest validation and test accuracy.  Momentum made SGD competitive
+by accumulating a velocity that damps oscillation and maintains progress in a
+consistent descent direction; plain SGD converged much more slowly within the
+same 30-epoch budget.  The choice is based on validation loss rather than test
+accuracy, so the test split remains an unbiased final evaluation.  Each run
+uses the same lowest-validation-loss checkpoint rule, making the comparison
+insensitive to a poorer final epoch.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{\input{tables/optimizer_comparison.tex}}
+  \caption{Optimizer comparison for Model~B.  All runs use the same Tesla T4,
+  split, seed, data order, batch size, augmentation, and 30-epoch budget.}
+  \label{tab:optimizer-comparison}
+\end{table}
 
 \begin{figure}[htbp]
   \centering

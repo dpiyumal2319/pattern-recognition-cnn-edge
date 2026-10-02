@@ -8,7 +8,8 @@ from dataclasses import replace
 import pytest
 
 from pr_edge.config import DataConfig, load_config
-from pr_edge.paths import CONFIGS_DIR
+from pr_edge.paths import CONFIGS_DIR, REPORT_DIR
+from pr_edge.tables import build_optimizer_comparison
 from scripts import run_optimizer_sweep as sweep
 from scripts.run_optimizer_sweep import (
     LABELS,
@@ -67,6 +68,25 @@ def test_optimizer_figure_rejects_empty_history(tmp_path):
     path.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="empty history"):
         _plot_validation_losses({"model_b": path}, tmp_path / "optimizer.png")
+
+
+def test_optimizer_table_uses_committed_run_artifacts(tmp_path):
+    out = build_optimizer_comparison(
+        ["model_b", "model_b_sgd", "model_b_sgdm"], tmp_path / "optimizer.tex"
+    )
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith(r"\begin{tabular}") and text.rstrip().endswith(r"\end{tabular}")
+    assert "Adam & 0.001 & 0.0" in text
+    assert "SGD & 0.01 & 0.0" in text
+    assert "SGD + momentum & 0.01 & 0.9" in text
+    assert "Best val. loss" in text and "Test acc." in text and "Epoch (s)" in text
+    assert out.read_bytes() == (REPORT_DIR / "tables" / "optimizer_comparison.tex").read_bytes()
+
+
+def test_optimizer_table_rejects_a_missing_run(tmp_path, monkeypatch):
+    monkeypatch.setattr("pr_edge.tables.RESULTS_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError, match="missing optimizer table artifact"):
+        build_optimizer_comparison(["missing"], tmp_path / "optimizer.tex")
 
 
 def test_main_runs_every_config_and_writes_smoke_figure(tmp_path, monkeypatch):

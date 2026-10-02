@@ -14,7 +14,12 @@ wrapper. Caption, label and placement belong to the report, not the generator.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import yaml
+
+from .paths import RESULTS_DIR
 
 
 # Keras-style layer names, as in the model.summary() table on CNNs.pdf p54, so
@@ -108,6 +113,46 @@ def build_custom_comparison(run_ids: list[str], out: Path) -> Path:
     and recall are added because task 4 requires them too. Implemented by #18.
     """
     raise NotImplementedError("build_custom_comparison is issue #18")
+
+
+def build_optimizer_comparison(run_ids: list[str], out: Path) -> Path:
+    """Adam vs SGD vs SGD with momentum for Task 3.
+
+    Reads the resolved optimizer configuration and validation/test artifacts
+    from each run.  Keeping this generated prevents a repeated experiment from
+    leaving stale, hand-typed values in the report.
+    """
+    lines = [
+        r"\begin{tabular}{lrrrrrr}",
+        r"\hline",
+        r"Optimizer & LR & Momentum & Best val. loss & Best val. acc. (\%) & Test acc. (\%) & Epoch (s) \\",
+        r"\hline",
+    ]
+    for run_id in run_ids:
+        directory = RESULTS_DIR / run_id
+        required = ["config.yaml", "metrics.json", "profile.json", "selection.json"]
+        missing = [name for name in required if not (directory / name).is_file()]
+        if missing:
+            raise FileNotFoundError(f"run {run_id!r} is missing optimizer table artifact(s): {missing}")
+
+        config = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
+        metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+        profile = json.loads((directory / "profile.json").read_text(encoding="utf-8"))
+        selection = json.loads((directory / "selection.json").read_text(encoding="utf-8"))
+        optimizer = config["optimizer"]
+        name = "Adam" if optimizer["name"] == "adam" else "SGD"
+        if optimizer["name"] == "sgd" and optimizer["momentum"] > 0:
+            name = "SGD + momentum"
+        lines.append(
+            f"{name} & {optimizer['lr']:.3g} & {optimizer['momentum']:.1f} & "
+            f"{selection['best_val_loss']:.3f} & {100 * selection['best_val_acc']:.2f} & "
+            f"{100 * metrics['accuracy']:.2f} & {profile['mean_epoch_seconds']:.2f} \\\\"
+        )
+    lines += [r"\hline", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
 
 
 def build_sota_comparison(run_ids: list[str], out: Path) -> Path:

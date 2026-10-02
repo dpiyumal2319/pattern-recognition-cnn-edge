@@ -22,6 +22,7 @@ from pr_edge.tables import (  # noqa: E402
     build_dataset_table,
     build_final_comparison,
     build_layer_table,
+    build_optimizer_comparison,
     build_sota_comparison,
 )
 
@@ -36,6 +37,9 @@ BUILDERS = {
     "model_b_layers": lambda: build_layer_table(CONFIGS_DIR / "model_b.yaml", TABLES_DIR / "model_b_layers.tex"),
     "dataset": lambda: build_dataset_table(DATA_DIR / "splits.csv", TABLES_DIR / "dataset.tex"),
     "custom": lambda: build_custom_comparison(["model_a", "model_b"], TABLES_DIR / "custom_comparison.tex"),
+    "optimizer": lambda: build_optimizer_comparison(
+        ["model_b", "model_b_sgd", "model_b_sgdm"], TABLES_DIR / "optimizer_comparison.tex"
+    ),
     "sota": lambda: build_sota_comparison(
         ["mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224"], TABLES_DIR / "sota_comparison.tex"
     ),
