@@ -53,3 +53,52 @@ insensitive to a poorer final epoch.
   momentum on Model~B under an otherwise identical training budget.}
   \label{fig:optimizer-comparison}
 \end{figure}
+
+\subsection{Effect of the momentum coefficient}
+\label{sec:momentum-ablation}
+
+To isolate the effect of momentum, Model~B was trained with SGD at the fixed
+learning rate $\alpha=10^{-2}$ for $m\in\{0,0.5,0.9,0.99\}$.  Every other
+resolved setting---including the split, seed, data order, augmentation, batch
+size, initialization, and 30-epoch budget---was identical.  All four runs were
+also timed on the same NVIDIA GeForce RTX~3060 Laptop GPU, so device variation
+cannot explain the differences in Figure~\ref{fig:momentum-ablation}.
+
+The update on p.~103 of \emph{DNNs.pdf},
+\begin{equation}
+  v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
+  \qquad w \leftarrow w+v,
+  \label{eq:momentum-update}
+\end{equation}
+shows that $m$ controls how much of the previous velocity survives.  When
+successive gradients have a consistent sign, their contributions accumulate
+in $v$, increasing progress along that direction.  Across a narrow loss
+ravine, gradient components that alternate sign instead cancel part of the
+stored velocity, damping side-to-side oscillation while preserving progress
+along the ravine.
+
+The curves exhibit both effects.  With $m=0$, Equation~\ref{eq:momentum-update}
+has no memory and validation loss remains high within the epoch budget.
+Setting $m=0.5$ provides some carry-over and converges faster, but still leaves
+substantial loss after 30 epochs.  The $m=0.9$ run descends steadily and reaches
+the lowest validation loss, making it the preferred momentum setting under the
+fixed budget.  At $m=0.99$, the large retained velocity produces the fastest
+initial descent but repeatedly overshoots the local descent direction: the
+validation curve oscillates after its early minimum and finishes less stably.
+Although that run happens to obtain a slightly higher test accuracy, it is not
+selected on the test split; optimizer selection uses validation loss to avoid
+biasing the final evaluation.
+
+Thus momentum is not simply ``more is better'': too little fails to exploit
+consistent gradients, while too much retains stale velocity and can destabilise
+convergence.  For this model and learning rate, $m=0.9$ gives the best balance
+between acceleration and damping.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.86\linewidth]{figures/momentum_ablation.png}
+  \caption{Validation-loss curves for Model~B with SGD at
+  $\alpha=10^{-2}$.  Momentum is the only methodological variable across the
+  four 30-epoch runs.}
+  \label{fig:momentum-ablation}
+\end{figure}

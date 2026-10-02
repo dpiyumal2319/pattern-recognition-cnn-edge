@@ -1,0 +1,7 @@
+{
+  "criterion": "val_loss",
+  "best_epoch": 30,
+  "best_val_loss": 1.459271,
+  "best_val_acc": 0.421235,
+  "epochs_trained": 30
+}
