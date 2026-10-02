@@ -23,6 +23,7 @@ model:
   freeze_backbone: false
 
 optimizer:
+  # Family-appropriate SGD baseline; momentum is the only change in sgdm.
   name: sgd
   lr: 0.01
   momentum: 0.0

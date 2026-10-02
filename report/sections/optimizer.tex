@@ -1,0 +1,45 @@
+\subsection{Optimizer comparison protocol}
+\label{sec:optimizer-comparison}
+
+The optimizer comparison uses Model~B under three configurations: Adam with
+$\alpha=10^{-3}$, plain stochastic gradient descent (SGD) with
+$\alpha=10^{-2}$, and SGD with the same learning rate and momentum $m=0.9$.
+Only the optimizer block changes; the model, split manifest, random seed, data
+order, batch size, augmentation, epoch budget, and execution device are held
+constant.  This isolation is checked programmatically before training begins.
+
+The choices follow the course treatment in \emph{DNNs.pdf}.  Page~101 gives
+the SGD update
+\begin{equation}
+  w \leftarrow w-\alpha\frac{\partial L(w)}{\partial w},
+\end{equation}
+while p.~103 adds a velocity term,
+\begin{equation}
+  v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
+  \qquad w \leftarrow w+v.
+\end{equation}
+The momentum value $0.9$ is therefore compared against $m=0$ without changing
+SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
+rate rather than forcing all optimizers to share a numerically equal step
+size: p.~108 emphasises that Adam is more forgiving of learning-rate choice,
+whereas the effective region for well-tuned SGD is narrower and
+problem-specific.  The selected starting values, $10^{-3}$ for Adam and
+$10^{-2}$ for SGD, are conventional baselines for this comparison and are
+recorded in the resolved configuration of every run.
+
+Adam is the provisional optimizer for the final custom-model runs because the
+lecture notes describe adaptive methods as giving faster initial reductions
+in training error and greater stability.  The decision is tested rather than
+assumed: validation-loss curves from all three runs are overlaid in
+Figure~\ref{fig:optimizer-comparison}, and the lowest validation loss---not
+test accuracy---determines the chosen configuration.  Each run uses the same
+lowest-validation-loss checkpoint rule, making the comparison insensitive to
+a poorer final epoch.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.86\linewidth]{figures/optimizer_comparison.png}
+  \caption{Validation-loss comparison for Adam, plain SGD, and SGD with
+  momentum on Model~B under an otherwise identical training budget.}
+  \label{fig:optimizer-comparison}
+\end{figure}
