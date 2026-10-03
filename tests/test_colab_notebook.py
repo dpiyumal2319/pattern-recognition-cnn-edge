@@ -59,7 +59,12 @@ def test_notebook_caches_eurosat_and_results_in_drive(notebook):
     code = _code(notebook)
     assert 'drive.mount("/content/drive")' in code
     assert 'DRIVE_ROOT / "data" / "eurosat"' in code
-    assert "REPO_EUROSAT.symlink_to(CACHE_EUROSAT" in code
+    assert 'image_root = REPO_EUROSAT / "2750"' in code
+    assert 'cached_archive = CACHE_EUROSAT / "EuroSAT.zip"' in code
+    assert "shutil.copy2(cached_archive, local_archive)" in code
+    assert 'EuroSAT(root=str(REPO_DIR / "data"), download=True)' in code
+    assert 'extract_archive(str(local_archive), str(REPO_EUROSAT))' in code
+    assert "shutil.copy2(local_archive, cached_archive)" in code
     assert 'DRIVE_ROOT / "results" / run_name' in code
 
 

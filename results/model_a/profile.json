@@ -20,7 +20,7 @@
     64,
     64
   ],
-  "mean_epoch_seconds": 8.1403,
+  "mean_epoch_seconds": 11.8009,
   "device": "cuda",
-  "device_name": "NVIDIA GeForce RTX 3060 Laptop GPU"
+  "device_name": "Tesla T4"
 }
