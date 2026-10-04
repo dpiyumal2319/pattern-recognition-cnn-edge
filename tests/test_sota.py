@@ -7,6 +7,7 @@ boundary without downloading the checkpoint.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -200,3 +201,32 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
         assert cfg.model.name == name
         assert cfg.data.input_size == size
         assert Path(cfg.data.manifest).as_posix() == "data/splits.csv"
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"name": "resnet18"}, "unsupported"),
+    ({"num_classes": 0}, "num_classes"),
+    ({"num_classes": True}, "num_classes"),
+    ({"dropout": -0.1}, "dropout"),
+    ({"dropout": 1.1}, "dropout"),
+    ({"pretrained": 1}, "pretrained"),
+    ({"freeze_backbone": 1}, "freeze_backbone"),
+])
+def test_invalid_sota_config_fails_loudly(change, message):
+    cfg = _config()
+    cfg = replace(cfg, model=replace(cfg.model, **change))
+    with pytest.raises(ValueError, match=message):
+        build_sota(cfg)
+
+
+def test_missing_or_non_linear_classifier_fails_loudly(monkeypatch):
+    from torchvision import models
+
+    class NoLinear(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.classifier = nn.ReLU()
+
+    monkeypatch.setattr(models, "get_model", lambda *args, **kwargs: NoLinear())
+    with pytest.raises(ValueError, match="no nn.Linear"):
+        build_sota(_config())

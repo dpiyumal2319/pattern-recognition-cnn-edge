@@ -95,6 +95,14 @@ def build_sota(cfg: Config) -> nn.Module:
     model_cfg = cfg.model
     if model_cfg.name not in SUPPORTED:
         raise ValueError(f"unsupported SOTA model '{model_cfg.name}'. Known: {', '.join(SUPPORTED)}")
+    if type(model_cfg.num_classes) is not int or model_cfg.num_classes <= 0:
+        raise ValueError("model.num_classes must be a positive integer")
+    if type(model_cfg.dropout) not in (int, float) or not 0 <= model_cfg.dropout <= 1:
+        raise ValueError("model.dropout must lie between 0 and 1")
+    if type(model_cfg.pretrained) is not bool:
+        raise ValueError("model.pretrained must be a boolean")
+    if type(model_cfg.freeze_backbone) is not bool:
+        raise ValueError("model.freeze_backbone must be a boolean")
 
     weights = models.get_model_weights(model_cfg.name).DEFAULT if model_cfg.pretrained else None
     backbone = models.get_model(model_cfg.name, weights=weights)
