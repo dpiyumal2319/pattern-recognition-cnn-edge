@@ -57,6 +57,7 @@ Prepare EuroSAT once, then run an experiment and generate report inputs:
 python scripts/prepare_data.py --config configs/base.yaml
 python scripts/run_experiment.py --config configs/model_b.yaml
 python scripts/build_tables.py --all
+python scripts/build_figures.py --all
 ```
 
 Each experiment writes its resolved configuration, history, test metrics,
