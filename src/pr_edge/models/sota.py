@@ -16,10 +16,34 @@ the pair is what lets task 6 separate "pretrained features are better" from
 from __future__ import annotations
 
 import torch.nn as nn
+from torch import Tensor
 
 from ..config import Config
 
 SUPPORTED = ("mobilenet_v2", "efficientnet_b0")
+
+
+class _TransferModel(nn.Module):
+    """A torchvision model with a config-controlled parameter freeze policy."""
+
+    def __init__(self, backbone: nn.Module, freeze_backbone: bool) -> None:
+        super().__init__()
+        self.backbone = backbone
+        self.freeze_backbone = freeze_backbone
+
+        for parameter in self.backbone.parameters():
+            parameter.requires_grad = not freeze_backbone
+        if freeze_backbone:
+            for parameter in self.classifier.parameters():
+                parameter.requires_grad = True
+
+    @property
+    def classifier(self) -> nn.Module:
+        """Expose torchvision's classifier without registering it twice."""
+        return self.backbone.classifier
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        return self.backbone(inputs)
 
 
 def _replace_final_linear(classifier: nn.Module, num_classes: int) -> nn.Linear:
@@ -62,4 +86,4 @@ def build_sota(cfg: Config) -> nn.Module:
     for module in classifier.modules():
         if isinstance(module, nn.Dropout):
             module.p = float(model_cfg.dropout)
-    return backbone
+    return _TransferModel(backbone, model_cfg.freeze_backbone)
