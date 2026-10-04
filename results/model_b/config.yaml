@@ -1,6 +1,6 @@
 run_id: model_b
 seed: 42
-device: cuda
+device: auto
 data:
   root: data/
   manifest: data/splits.csv
