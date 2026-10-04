@@ -22,10 +22,44 @@ from ..config import Config
 SUPPORTED = ("mobilenet_v2", "efficientnet_b0")
 
 
-def build_sota(cfg: Config) -> nn.Module:
-    """Build a pretrained backbone with a replaced head.
+def _replace_final_linear(classifier: nn.Module, num_classes: int) -> nn.Linear:
+    """Replace the final linear descendant while preserving its input width."""
+    target: tuple[nn.Module, str, nn.Linear] | None = None
+    for parent in classifier.modules():
+        for name, child in parent.named_children():
+            if isinstance(child, nn.Linear):
+                target = parent, name, child
+    if target is None:
+        raise ValueError("torchvision classifier contains no nn.Linear prediction layer")
 
-    Head replacement must be generic across architectures rather than
-    per-model special-casing. Implemented by #19.
-    """
-    raise NotImplementedError("build_sota is issue #19")
+    parent, name, previous = target
+    replacement = nn.Linear(
+        previous.in_features,
+        num_classes,
+        bias=previous.bias is not None,
+        device=previous.weight.device,
+        dtype=previous.weight.dtype,
+    )
+    setattr(parent, name, replacement)
+    return replacement
+
+
+def build_sota(cfg: Config) -> nn.Module:
+    """Build a supported torchvision backbone with a replacement prediction head."""
+    from torchvision import models
+
+    model_cfg = cfg.model
+    if model_cfg.name not in SUPPORTED:
+        raise ValueError(f"unsupported SOTA model '{model_cfg.name}'. Known: {', '.join(SUPPORTED)}")
+
+    weights = models.get_model_weights(model_cfg.name).DEFAULT if model_cfg.pretrained else None
+    backbone = models.get_model(model_cfg.name, weights=weights)
+    classifier = getattr(backbone, "classifier", None)
+    if not isinstance(classifier, nn.Module):
+        raise ValueError(f"torchvision model '{model_cfg.name}' exposes no classifier module")
+
+    _replace_final_linear(classifier, model_cfg.num_classes)
+    for module in classifier.modules():
+        if isinstance(module, nn.Dropout):
+            module.p = float(model_cfg.dropout)
+    return backbone

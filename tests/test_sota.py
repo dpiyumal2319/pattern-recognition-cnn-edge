@@ -1,27 +1,118 @@
-"""Pretrained lightweight backbones.
+"""Pretrained lightweight backbones and transfer-learning policy (issue #19).
 
-Placeholder created by #1 as part of the interface freeze. #19 turns these
-green. See docs/interfaces.md section 5 for the full test-file map.
+Tests use ``weights=None`` or a patched torchvision registry, so CI never
+touches the network. Real ImageNet weight selection is verified at the registry
+boundary without downloading the checkpoint.
 """
 
 from __future__ import annotations
 
 import pytest
+import torch.nn as nn
 
-pytestmark = pytest.mark.skip(reason="not implemented yet - owned by #19")
-
-
-def test_head_is_replaced_for_ten_classes():
-    """ImageNet's 1000-way head must be gone."""
-
-
-def test_freeze_backbone_leaves_only_the_head_trainable():
-    """trainable_params must be far smaller than total_params when frozen."""
+from pr_edge.config import Config, DataConfig, ModelConfig
+from pr_edge.models import build_model
+from pr_edge.models.sota import SUPPORTED, build_sota
 
 
-def test_accepts_both_sixty_four_and_two_twenty_four_input():
-    """The resolution ablation depends on this."""
+def _config(
+    name: str = "mobilenet_v2",
+    *,
+    pretrained: bool = False,
+    freeze_backbone: bool = False,
+    input_size: int = 64,
+    num_classes: int = 10,
+    dropout: float = 0.2,
+) -> Config:
+    return Config(
+        run_id="sota_test",
+        data=DataConfig(input_size=input_size),
+        model=ModelConfig(
+            name=name,
+            num_classes=num_classes,
+            channels=[],
+            head="gap",
+            dropout=dropout,
+            pretrained=pretrained,
+            freeze_backbone=freeze_backbone,
+        ),
+    )
 
 
-def test_head_replacement_is_generic_across_architectures():
-    """No per-model special-casing."""
+def _linear_layers(module: nn.Module) -> list[nn.Linear]:
+    return [layer for layer in module.modules() if isinstance(layer, nn.Linear)]
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_head_is_replaced_for_ten_classes(name):
+    model = build_sota(_config(name))
+    linear = _linear_layers(model.classifier)
+    assert linear
+    assert linear[-1].out_features == 10
+    assert all(layer.out_features != 1000 for layer in linear)
+
+
+class _NestedClassifierNet(nn.Module):
+    """Small stand-in proving replacement depends on structure, not model name."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.features = nn.Sequential(nn.Conv2d(3, 4, 1), nn.BatchNorm2d(4), nn.ReLU())
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.75),
+            nn.Sequential(nn.Identity(), nn.Linear(4, 1000, bias=False)),
+        )
+
+    def forward(self, inputs):
+        features = self.features(inputs).mean(dim=(2, 3))
+        return self.classifier(features)
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_head_replacement_is_generic_across_architectures(name, monkeypatch):
+    from torchvision import models
+
+    calls = []
+
+    def fake_get_model(requested, *, weights):
+        calls.append((requested, weights))
+        return _NestedClassifierNet()
+
+    monkeypatch.setattr(models, "get_model", fake_get_model)
+    model = build_sota(_config(name, dropout=0.35))
+    final = _linear_layers(model.classifier)[-1]
+    assert calls == [(name, None)]
+    assert final.in_features == 4 and final.out_features == 10
+    assert final.bias is None
+    dropout = next(layer for layer in model.classifier.modules() if isinstance(layer, nn.Dropout))
+    assert dropout.p == 0.35
+
+
+def test_pretrained_selects_torchvision_default_weights(monkeypatch):
+    from torchvision import models
+
+    marker = object()
+    weights = type("Weights", (), {"DEFAULT": marker})
+    calls = {}
+    monkeypatch.setattr(
+        models,
+        "get_model_weights",
+        lambda name: calls.setdefault("enum", (name, weights))[1],
+    )
+
+    def fake_get_model(name, *, weights):
+        calls["model"] = (name, weights)
+        return _NestedClassifierNet()
+
+    monkeypatch.setattr(models, "get_model", fake_get_model)
+    build_sota(_config(pretrained=True))
+    assert calls == {
+        "enum": ("mobilenet_v2", weights),
+        "model": ("mobilenet_v2", marker),
+    }
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_model_registry_dispatches_to_sota(name):
+    model = build_model(_config(name))
+    assert _linear_layers(model.classifier)[-1].out_features == 10
