@@ -16,7 +16,7 @@ def test_configs_exist_for_every_run_id():
     expected = {
         "base", "model_a", "model_b", "model_b_sgd", "model_b_sgdm",
         "mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224",
-        "mobilenetv2_64_ft",  # #54: unfrozen partner of mobilenetv2_64
+        "mobilenetv2_64_ft", "mobilenetv2_224_ft",  # #54: unfrozen-backbone partners
     }
     assert {p.stem for p in ALL_CONFIGS} == expected
 

@@ -196,6 +196,7 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
         "efficientnetb0_64.yaml": ("efficientnet_b0", 64),
         "mobilenetv2_224.yaml": ("mobilenet_v2", 224),
         "mobilenetv2_64_ft.yaml": ("mobilenet_v2", 64),
+        "mobilenetv2_224_ft.yaml": ("mobilenet_v2", 224),
     }
     for filename, (name, size) in expected.items():
         cfg = load_config(CONFIGS_DIR / filename)
@@ -206,6 +207,7 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
 
 @pytest.mark.parametrize("frozen,fine_tuned", [
     ("mobilenetv2_64", "mobilenetv2_64_ft"),
+    ("mobilenetv2_224", "mobilenetv2_224_ft"),
 ])
 def test_fine_tune_config_differs_from_frozen_partner_only_in_policy(frozen, fine_tuned):
     """The _ft run is the 'fine-tune' half of CNNs.pdf p58's 'keep frozen or
