@@ -12,10 +12,11 @@ ALL_CONFIGS = sorted(CONFIGS_DIR.glob("*.yaml"))
 
 
 def test_configs_exist_for_every_run_id():
-    """All seven fixed run IDs plus base must have a config file."""
+    """Every fixed run ID (AGENTS.md section 3) plus base must have a config file."""
     expected = {
         "base", "model_a", "model_b", "model_b_sgd", "model_b_sgdm",
         "mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224",
+        "mobilenetv2_64_ft",  # #54: unfrozen partner of mobilenetv2_64
     }
     assert {p.stem for p in ALL_CONFIGS} == expected
 
