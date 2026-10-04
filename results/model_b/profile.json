@@ -23,7 +23,7 @@
     64,
     64
   ],
-  "mean_epoch_seconds": 10.8328,
+  "mean_epoch_seconds": 11.6081,
   "device": "cuda",
   "device_name": "Tesla T4"
 }
