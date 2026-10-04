@@ -1,0 +1,66 @@
+\subsection{Custom-model training and evaluation}
+\label{sec:custom-results}
+
+Both custom networks were trained for 30 epochs with Adam on the same
+stratified split, random seed, augmentation pipeline, batch size, and Tesla
+T4 device.  Checkpoint selection used the lowest validation loss, and the test
+split was evaluated only after that selection.  Figure~\ref{fig:custom-loss}
+therefore compares like with like rather than mixing devices or training
+budgets.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/custom_loss_curves.png}
+  \caption{Training and validation cross-entropy loss for Model~A and
+  Model~B.  The panels share a common vertical scale.}
+  \label{fig:custom-loss}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{\input{tables/custom_comparison.tex}}
+  \caption{Custom-model comparison generated from the committed test metrics
+  and profiler outputs.  Precision and recall are macro averages over the ten
+  EuroSAT classes; epoch time was measured on the same Tesla T4.}
+  \label{tab:custom-comparison}
+\end{table}
+
+Table~\ref{tab:custom-comparison} shows the central resource--accuracy
+trade-off.  Replacing standard convolutions with depthwise and pointwise steps,
+and replacing the flattened classifier input with global average pooling,
+makes Model~B dramatically smaller while giving up some test accuracy, macro
+precision, and macro recall.  The reduced capacity is most visible for
+visually overlapping land-cover categories: Figure~\ref{fig:model-b-confusion}
+shows more confusion among Herbaceous Vegetation, Permanent Crop, Highway,
+and River than Figure~\ref{fig:model-a-confusion}.  In contrast, both models
+remain strong on classes with more distinctive appearance, including Forest,
+Residential, and Sea/Lake.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\linewidth]{figures/model_a_confusion_matrix.png}
+  \caption{Model~A test confusion matrix.  Colour is normalised within each
+  true-class row and annotations give raw sample counts.}
+  \label{fig:model-a-confusion}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.82\linewidth]{figures/model_b_confusion_matrix.png}
+  \caption{Model~B test confusion matrix, using the same convention as
+  Figure~\ref{fig:model-a-confusion}.}
+  \label{fig:model-b-confusion}
+\end{figure}
+
+The storage saving is substantial, but the epoch-time reduction is small.
+This is not a contradiction: the profiler counts arithmetic, whereas wall-clock
+training also includes data loading, augmentation, framework overhead, memory
+traffic, and the efficiency of the accelerator's particular convolution
+kernels.  Depthwise convolution reduces theoretical work without guaranteeing
+the same proportional speed-up on a highly parallel GPU.  Its benefit is
+clearer under the assignment's edge constraint, where the much smaller
+parameter footprint and lower MAC count directly reduce storage and inference
+work.  Model~A is preferable when predictive performance is the priority;
+Model~B is the defensible choice when the parameter ceiling and deployability
+are hard constraints.
