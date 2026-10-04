@@ -82,7 +82,14 @@ def _replace_final_linear(classifier: nn.Module, num_classes: int) -> nn.Linear:
 
 
 def build_sota(cfg: Config) -> nn.Module:
-    """Build a supported torchvision backbone with a replacement prediction head."""
+    """Build a supported torchvision backbone with a 10-class prediction head.
+
+    The model registry and final-linear discovery are shared by both supported
+    architectures. ``pretrained`` selects ImageNet's default weights;
+    ``freeze_backbone`` selects the frozen-feature-extractor or full-fine-tuning
+    phase. Input resolution is deliberately absent from model construction:
+    both networks use adaptive pooling and accept the configured 64 or 224.
+    """
     from torchvision import models
 
     model_cfg = cfg.model

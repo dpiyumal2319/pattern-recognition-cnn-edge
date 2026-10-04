@@ -7,13 +7,16 @@ boundary without downloading the checkpoint.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import torch
 import torch.nn as nn
 
-from pr_edge.config import Config, DataConfig, ModelConfig
+from pr_edge.config import Config, DataConfig, ModelConfig, load_config
 from pr_edge.models import build_model
 from pr_edge.models.sota import SUPPORTED, build_sota
+from pr_edge.paths import CONFIGS_DIR
 
 
 def _config(
@@ -67,6 +70,15 @@ def test_freeze_backbone_leaves_only_the_head_trainable(name):
 def test_unfrozen_phase_makes_every_parameter_trainable(name):
     model = build_sota(_config(name, freeze_backbone=False))
     assert all(parameter.requires_grad for parameter in model.parameters())
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+@pytest.mark.parametrize("size", [64, 224])
+def test_accepts_both_sixty_four_and_two_twenty_four_input(name, size):
+    model = build_sota(_config(name, input_size=size)).eval()
+    with torch.inference_mode():
+        output = model(torch.randn(1, 3, size, size))
+    assert output.shape == (1, 10)
 
 
 class _NestedClassifierNet(nn.Module):
@@ -175,3 +187,16 @@ def test_second_phase_can_restore_frozen_phase_weights_and_unfreeze(monkeypatch)
 def test_model_registry_dispatches_to_sota(name):
     model = build_model(_config(name))
     assert _linear_layers(model.classifier)[-1].out_features == 10
+
+
+def test_all_sota_configs_reuse_manifest_and_resolution_policy():
+    expected = {
+        "mobilenetv2_64.yaml": ("mobilenet_v2", 64),
+        "efficientnetb0_64.yaml": ("efficientnet_b0", 64),
+        "mobilenetv2_224.yaml": ("mobilenet_v2", 224),
+    }
+    for filename, (name, size) in expected.items():
+        cfg = load_config(CONFIGS_DIR / filename)
+        assert cfg.model.name == name
+        assert cfg.data.input_size == size
+        assert Path(cfg.data.manifest).as_posix() == "data/splits.csv"
