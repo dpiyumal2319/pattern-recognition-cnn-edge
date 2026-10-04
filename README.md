@@ -7,6 +7,14 @@ Two custom architectures — a standard CNN and a depthwise separable variant un
 parameters — are compared against each other and against two fine-tuned lightweight SOTA
 backbones, on accuracy, memory footprint and computational cost.
 
+The SOTA harness builds MobileNetV2 and EfficientNet-B0 through torchvision's
+model registry, replaces their final linear prediction layer for EuroSAT's ten
+classes, and applies `model.freeze_backbone`. A frozen feature-extraction phase
+keeps the backbone in evaluation mode while training the new classifier; a
+second config with `freeze_backbone: false` can restore that checkpoint and
+fine-tune all parameters. Primary comparisons use 64×64 inputs, while the
+supplementary MobileNetV2 config uses 224×224 through the same data pipeline.
+
 | | |
 |---|---|
 | Brief | [`docs/EN3150_Assignment_03_In23.pdf`](docs/EN3150_Assignment_03_In23.pdf) |
