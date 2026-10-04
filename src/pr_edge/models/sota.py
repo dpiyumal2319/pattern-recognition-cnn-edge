@@ -24,7 +24,13 @@ SUPPORTED = ("mobilenet_v2", "efficientnet_b0")
 
 
 class _TransferModel(nn.Module):
-    """A torchvision model with a config-controlled parameter freeze policy."""
+    """A torchvision model with a config-controlled transfer-learning policy.
+
+    ``requires_grad=False`` alone is insufficient for a frozen feature
+    extractor: ``model.train()`` would still update BatchNorm running statistics
+    and enable stochastic backbone layers. This wrapper keeps the backbone in
+    evaluation mode while returning the replacement classifier to training mode.
+    """
 
     def __init__(self, backbone: nn.Module, freeze_backbone: bool) -> None:
         super().__init__()
@@ -44,6 +50,13 @@ class _TransferModel(nn.Module):
 
     def forward(self, inputs: Tensor) -> Tensor:
         return self.backbone(inputs)
+
+    def train(self, mode: bool = True) -> "_TransferModel":
+        super().train(mode)
+        if mode and self.freeze_backbone:
+            self.backbone.eval()
+            self.classifier.train(True)
+        return self
 
 
 def _replace_final_linear(classifier: nn.Module, num_classes: int) -> nn.Linear:

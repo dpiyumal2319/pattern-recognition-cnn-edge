@@ -129,6 +129,30 @@ def test_pretrained_selects_torchvision_default_weights(monkeypatch):
     }
 
 
+def test_frozen_backbone_stays_in_eval_mode_while_head_trains(monkeypatch):
+    from torchvision import models
+
+    monkeypatch.setattr(models, "get_model", lambda *args, **kwargs: _NestedClassifierNet())
+    model = build_sota(_config(freeze_backbone=True))
+    model.train()
+    assert model.training is True
+    assert model.backbone.training is False
+    assert model.backbone.features[1].training is False
+    assert model.classifier.training is True
+    model.eval()
+    assert model.classifier.training is False
+
+
+def test_unfrozen_backbone_enters_training_mode(monkeypatch):
+    from torchvision import models
+
+    monkeypatch.setattr(models, "get_model", lambda *args, **kwargs: _NestedClassifierNet())
+    model = build_sota(_config(freeze_backbone=False))
+    model.train()
+    assert model.backbone.training is True
+    assert model.backbone.features[1].training is True
+
+
 def test_second_phase_can_restore_frozen_phase_weights_and_unfreeze(monkeypatch):
     from torchvision import models
 
