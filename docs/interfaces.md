@@ -355,6 +355,7 @@ results/<run_id>/
 python scripts/prepare_data.py  --config configs/base.yaml [--force]
 python scripts/run_experiment.py --config configs/model_b.yaml [--smoke] [--epochs N] [--device D] [--run-id ID]
 python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers|model_b_layers]
+python scripts/build_report.py  [--clean]          # latexmk on report/main.tex -> report/main.pdf  [#23]
 ```
 
 Command-line flags override the config file; the **resolved** values are what gets dumped to
@@ -394,6 +395,7 @@ not done until its test file passes.
 | `tests/test_model_b.py` | #10 | **`trainable_params <= 100_000`** — the brief's hard constraint |
 | `tests/test_sota.py` | #19 | Head replaced for 10 classes; freeze policy applied |
 | `tests/test_tables.py` | #18, #22 | Generated LaTeX contains every required column |
+| `tests/test_report.py` | #23 | Every section is `\input`; every plain reference exists; pending holes point at generator outputs |
 
 ---
 

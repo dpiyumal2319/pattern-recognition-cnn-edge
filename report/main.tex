@@ -1,0 +1,242 @@
+% EN3150 Assignment 03 - Resource-Constrained CNN for Edge Image Classification
+%
+% Build from the repository root with one command:
+%
+%     python scripts/build_report.py
+%
+% Ported from the group's EN3150 A02 template (issue #23): same page geometry,
+% packages, code listing styles, footer and title-page layout.
+%
+% Each task section's prose lives in report/sections/*.tex, owned by the issue
+% named beside its \input. Every number reaches this document through a
+% generated file in tables/ or figures/ - never hand-typed. A generated file
+% that does not exist yet renders as a visible "Pending" box (see
+% \generatedtable and \generatedfigure below) instead of breaking the build.
+
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+% ---------------------------------------------------------------- listings --
+% Code styles carried over unchanged from A02.
+
+\definecolor{codebg}{RGB}{234,243,224}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codeblue}{RGB}{0,0,180}
+\definecolor{codegray}{RGB}{110,110,110}
+\definecolor{codeorange}{RGB}{180,90,0}
+
+\lstdefinestyle{python}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegray}\itshape,
+    stringstyle=\color{codeorange},
+    numbers=none,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    frame=single,
+    framerule=0pt,
+    xleftmargin=2pt,
+    xrightmargin=2pt,
+    tabsize=4,
+    language=Python,
+    columns=fullflexible,
+    aboveskip=8pt,
+    belowskip=8pt
+}
+
+\lstdefinestyle{output}{
+    backgroundcolor=\color{white},
+    basicstyle=\ttfamily\footnotesize,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{black!40},
+    breaklines=true,
+    xleftmargin=2pt,
+    xrightmargin=2pt,
+    aboveskip=4pt,
+    belowskip=8pt
+}
+
+\lstset{style=python}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=red!70!black,
+    urlcolor=blue,
+    citecolor=red!70!black
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+% ------------------------------------------------------ skeleton helpers --
+
+% Red, bracketed text for anything a human must still fill in. Red so that a
+% placeholder left in by accident is impossible to miss in the final PDF;
+% #26 (final assembly) must leave none.
+\newcommand{\placeholder}[1]{\textcolor{red}{\textbf{[#1]}}}
+
+% A framed note for content an open issue will supply.
+\newcommand{\pending}[1]{%
+  \begin{center}
+  \fbox{\parbox{0.9\linewidth}{\centering\itshape\color{red!70!black}Pending: #1}}%
+  \end{center}}
+
+% Generated artifacts that may not exist yet. Each takes the path the
+% generator writes to and the issue that produces it. Once the file exists it
+% is used as-is; until then the PDF shows where it will go and who owes it.
+%   \generatedtable{tables/x.tex}{\#22}
+%   \generatedfigure[width=0.8\linewidth]{figures/x.png}{\#22}
+% \detokenize prints the path verbatim: generated file names contain
+% underscores, which LaTeX would otherwise read as math subscripts.
+\newcommand{\generatedtable}[2]{%
+  \IfFileExists{#1}{\input{#1}}%
+    {\pending{generated table \texttt{\detokenize{#1}} (#2)}}}
+\newcommand{\generatedfigure}[3][width=\linewidth]{%
+  \IfFileExists{#2}{\includegraphics[#1]{#2}}%
+    {\pending{generated figure \texttt{\detokenize{#2}} (#3)}}}
+
+% ------------------------------------------------------------ title data --
+% Filled in by #26 (final assembly). The submission file name is
+% <groupno>_A03_EN3150.
+
+\newcommand{\groupno}{\placeholder{Group number}}
+\newcommand{\repourl}{https://github.com/dpiyumal2319/pattern-recognition-cnn-edge}
+\newcommand{\submissiondate}{\placeholder{Submission date}}
+
+\title{}
+\date{}
+
+\begin{document}
+
+% ------------------------------------------------------------- title page --
+\begin{titlepage}
+\centering
+\vspace*{1.5cm}
+{\bfseries Department of Electronic \& Telecommunication Engineering, University of\\
+Moratuwa, Sri Lanka.\par}
+
+\vspace{1.5cm}
+\includegraphics[width=0.18\textwidth]{figures/uom_logo.png}
+
+\vspace{1.5cm}
+{\LARGE\bfseries Resource-Constrained CNN for\\ Edge Image Classification\par}
+\vspace{0.4cm}
+{\large EN3150 Assignment 03\par}
+
+\vspace{1.5cm}
+{\large\bfseries Group \groupno\par}
+\vspace{0.6cm}
+{\large
+\begin{tabular}{l@{\quad--\quad}l}
+  PIYUMAL W & 220727G \\
+  \placeholder{Member 2 name} & \placeholder{Index no.} \\
+  \placeholder{Member 3 name} & \placeholder{Index no.} \\
+  \placeholder{Member 4 name} & \placeholder{Index no.} \\
+\end{tabular}\par}
+
+\vspace{1.5cm}
+{\bfseries EN3150 -- Pattern Recognition\par}
+Submitted in partial fulfillment of the requirements for the module
+
+\vspace{0.8cm}
+{\bfseries Code repository\par}
+\url{\repourl}
+
+\vfill
+
+{\bfseries Date\par}
+\submissiondate
+
+\end{titlepage}
+
+% --------------------------------------------------------------- contents --
+\tableofcontents
+\vspace{1cm}
+
+\noindent All code, configurations and result files are in the group's
+repository at \url{\repourl}. No result in this report is typed by hand: every
+table and figure is generated from the committed result files by the
+repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
+
+\newpage
+
+% =========================================================================
+\section{Task 1: Data Preparation}
+\label{sec:task1}
+
+\input{sections/dataset}            % #24: source, classes, split table
+\input{sections/data_preparation}   % #3:  normalisation, augmentation, sample grid
+
+% =========================================================================
+\section{Task 2: Custom Architecture Design}
+\label{sec:task2}
+
+\input{sections/architecture}       % #11: hand-derived parameters and MACs
+\input{sections/activations}        % #12: hardware-aware activation choice
+
+% =========================================================================
+\section{Task 3: Optimizer Selection and Tuning}
+\label{sec:task3}
+
+\input{sections/optimizer}          % #13, #14: optimizer comparison, momentum
+
+% =========================================================================
+\section{Task 4: Custom Model Training and Evaluation}
+\label{sec:task4}
+
+\input{sections/custom_results}     % #15-#18: training, evaluation, A vs B
+
+% =========================================================================
+\section{Task 5: Lightweight State-of-the-Art Models}
+\label{sec:task5}
+
+\input{sections/sota_results}       % #20-#22: fine-tuned SOTA results
+
+% =========================================================================
+\section{Task 6: Final Comparison and Trade-offs}
+\label{sec:task6}
+
+\input{sections/discussion}         % #25: Model B vs SOTA
+
+% =========================================================================
+\appendix
+\section{Generated Layer Tables}
+\label{app:layer-tables}
+
+The per-layer tables below are produced by
+\texttt{scripts/build\_tables.py} directly from the model definitions, by a
+forward pass of one $64\times64$ image. They are the machine-generated
+counterpart of the hand derivations in Section~\ref{sec:task2}: every
+parameter count there must match the corresponding row here.
+
+\begin{table}[H]
+  \centering
+  \caption{Model A layer summary, generated from \texttt{configs/model\_a.yaml}.}
+  \label{tab:model-a-layers}
+  \generatedtable{tables/model_a_layers.tex}{\#9}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Model B layer summary, generated from \texttt{configs/model\_b.yaml}.
+  Each depthwise separable block appears as its two steps.}
+  \label{tab:model-b-layers}
+  \generatedtable{tables/model_b_layers.tex}{\#10}
+\end{table}
+
+\end{document}

@@ -58,7 +58,12 @@ python scripts/prepare_data.py --config configs/base.yaml
 python scripts/run_experiment.py --config configs/model_b.yaml
 python scripts/build_tables.py --all
 python scripts/build_figures.py --all
+python scripts/build_report.py          # needs latexmk (MiKTeX or TeX Live)
 ```
+
+The report is `report/main.tex`. Each task's prose is in `report/sections/`,
+and any generated table or figure that does not exist yet renders as a red
+"Pending" box naming the issue that owes it, so the PDF always builds.
 
 Each experiment writes its resolved configuration, history, test metrics,
 resource profile, checkpoint selection, and best checkpoint to
