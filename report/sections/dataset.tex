@@ -1,19 +1,61 @@
-% Owned by #24 (dataset and methodology). Stub created by #23.
-%
-% To write: EuroSAT's source and licence, the ten classes, and the stratified
-% 70/15/15 split with its sizes. State explicitly that EuroSAT is natively
-% 64x64, so the brief's "downscale to a maximum of 64x64" is satisfied by
-% construction. The sample grid already lives in data_preparation.tex.
+% Owned by #24 (dataset and methodology). The split table is generated from
+% data/splits.csv by scripts/build_tables.py --table dataset.
 
 \subsection{Dataset}
 \label{sec:dataset}
 
-\pending{dataset description: EuroSAT source, licence, classes and the
-stratified 70/15/15 split (\#24)}
+We use EuroSAT,\footnote{P.~Helber, B.~Bischke, A.~Dengel and D.~Borth,
+\emph{EuroSAT: A Novel Dataset and Deep Learning Benchmark for Land Use and
+Land Cover Classification}, IEEE Journal of Selected Topics in Applied Earth
+Observations and Remote Sensing, 2019. \url{https://github.com/phelber/EuroSAT}.}
+a land-use and land-cover benchmark of
+27,000 labelled, geo-referenced Sentinel-2 satellite image patches in ten
+classes: AnnualCrop, Forest, HerbaceousVegetation, Highway, Industrial,
+Pasture, PermanentCrop, Residential, River and SeaLake. The original release
+covers all 13 Sentinel-2 spectral bands; we use its RGB version, the three
+visible bands encoded as 8-bit images. The dataset is distributed under the MIT
+licence and was obtained through \texttt{torchvision} (version 0.20 or later,
+which downloads from the maintained Hugging Face mirror). Each class is a
+separate land-cover category observed from directly overhead, which is what
+makes the augmentation in Section~\ref{sec:data-preparation} label-preserving.
+
+\paragraph{Input resolution.}
+\textbf{Every EuroSAT image is natively $64\times64$ pixels.} The brief asks for
+images to be downscaled to a maximum of $64\times64$ to emulate a low-resource
+sensor. For EuroSAT this requirement is met by construction: no image is
+larger, so no downscaling step exists to be skipped, and the custom models
+consume the images at their original resolution without discarding any spatial
+detail. Figure~\ref{fig:data-augmentation-grid} shows one native image per
+class. The only resize anywhere in the project is an \emph{upsampling} to
+$224\times224$ for the single SOTA resolution ablation in Task~5, which
+deliberately tests the pretrained models at their design resolution.
+
+\paragraph{Split.}
+Following the supervised-learning pipeline of the course (data preparation,
+then splitting into training, validation and test sets; \emph{Learning from
+data}, p.~29), the images were divided once into training, validation and test
+sets in the brief's 70/15/15 proportions. The split is \emph{stratified}: each
+class is divided 70/15/15 on its own, so every set has the same class mix as
+the full dataset. Class sizes range from 2,000 to 3,000 images
+(Table~\ref{tab:dataset-split}), all of which divide exactly into 70/15/15,
+so every per-class and total proportion is exact. Each class's images are
+sorted by file name and shuffled with a fixed seed (42), which makes the
+partition a function of the files alone and identical on every machine.
+
+\paragraph{One partition for every experiment.}
+The assignment of every image to its set is stored in a manifest file,
+\texttt{data/splits.csv}, committed to the repository. Every experiment --- both
+custom models, the optimizer study and the fine-tuned SOTA models --- reads this
+same manifest rather than re-splitting, so the brief's requirement that the
+SOTA models use ``the same data splits as your custom networks'' holds by
+construction and can be checked. Table~\ref{tab:dataset-split} is generated
+from that manifest. The validation set is used for checkpoint and optimizer
+selection; the test set is evaluated once per model, after training.
 
 \begin{table}[htbp]
   \centering
-  \caption{Images per class in each split, generated from \texttt{data/splits.csv}.}
+  \caption{Images per class in each set, generated from the committed split
+  manifest \texttt{data/splits.csv}.}
   \label{tab:dataset-split}
   \generatedtable{tables/dataset.tex}{\#24}
 \end{table}
