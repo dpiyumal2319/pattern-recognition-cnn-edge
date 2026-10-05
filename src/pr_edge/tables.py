@@ -102,8 +102,46 @@ def build_layer_table(config: Path, out: Path) -> Path:
 
 
 def build_dataset_table(manifest: Path, out: Path) -> Path:
-    """Per-class counts across the train/val/test splits. Implemented by #24."""
-    raise NotImplementedError("build_dataset_table is issue #24")
+    """Per-class image counts in each split, read from the committed manifest.
+
+    Rows follow CLASS_NAMES order, then a total row and a share row that shows
+    the realised 70/15/15 proportions. Built from data/splits.csv itself - the
+    file every experiment reads - so the table can only describe the partition
+    that was actually used. Implemented by #24.
+    """
+    from .data import CLASS_NAMES, SPLIT_FRACTIONS, read_manifest, validate_manifest
+
+    rows = read_manifest(manifest)
+    # Refuse to tabulate a manifest the experiments themselves would reject.
+    validate_manifest(rows)
+
+    splits = list(SPLIT_FRACTIONS)
+    counts = {name: dict.fromkeys(splits, 0) for name in CLASS_NAMES}
+    for row in rows:
+        counts[row["label"]][row["split"]] += 1
+    totals = {split: sum(counts[name][split] for name in CLASS_NAMES) for split in splits}
+    grand = sum(totals.values())
+
+    lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Class & Train & Validation & Test & Total \\",
+        r"\midrule",
+    ]
+    for name in CLASS_NAMES:
+        cells = [_thousands(counts[name][split]) for split in splits]
+        lines.append(f"{name} & {' & '.join(cells)} & {_thousands(sum(counts[name].values()))} \\\\")
+    lines.append(r"\midrule")
+    cells = [_thousands(totals[split]) for split in splits]
+    lines.append(f"Total & {' & '.join(cells)} & {_thousands(grand)} \\\\")
+    shares = [f"{100 * totals[split] / grand:.1f}\\%" for split in splits]
+    lines.append(f"Share & {' & '.join(shares)} & 100.0\\% \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Explicit "\n" so the generated file is byte-identical on every platform.
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
 
 
 def build_custom_comparison(run_ids: list[str], out: Path) -> Path:
