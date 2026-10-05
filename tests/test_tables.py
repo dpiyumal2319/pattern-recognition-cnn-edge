@@ -145,3 +145,72 @@ def test_model_b_table_names_the_depthwise_and_pointwise_steps(tmp_path):
     assert r"Total & & 36{,}968 \\" in text
     # A standard convolution never appears in Model B.
     assert "\nConv2D" not in text
+
+
+# ---------------------------------------------------------------------------
+# Dataset split table (#24)
+# ---------------------------------------------------------------------------
+
+
+def _write_manifest(path, sizes):
+    """A stratified manifest with the given per-class sizes, split by _allocate."""
+    import csv
+
+    from pr_edge.data import _allocate
+
+    rows = []
+    for name, size in sizes.items():
+        allocation = _allocate(size)
+        index = 0
+        for split, count in allocation.items():
+            for _ in range(count):
+                rows.append({"filepath": f"{name}/{name}_{index}.jpg", "label": name, "split": split})
+                index += 1
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["filepath", "label", "split"], lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def test_dataset_table_counts_every_class_and_split(tmp_path):
+    from pr_edge.tables import build_dataset_table
+
+    # 13 does not divide into 70/15/15, so the row shows the realised counts.
+    manifest = _write_manifest(tmp_path / "splits.csv", {"Forest": 20, "River": 13})
+    text = build_dataset_table(manifest, tmp_path / "dataset.tex").read_text(encoding="utf-8")
+    assert r"Forest & 14 & 3 & 3 & 20 \\" in text
+    assert r"River & 9 & 2 & 2 & 13 \\" in text
+    assert r"AnnualCrop & 0 & 0 & 0 & 0 \\" in text      # every class listed, in CLASS_NAMES order
+    assert r"Total & 23 & 5 & 5 & 33 \\" in text
+    assert text.index("AnnualCrop") < text.index("Forest") < text.index("River")
+    assert text.startswith(r"\begin{tabular}") and r"\begin{table}" not in text
+
+
+def test_dataset_table_reports_the_committed_70_15_15_split(tmp_path):
+    from pr_edge.paths import DATA_DIR
+    from pr_edge.tables import build_dataset_table
+
+    text = build_dataset_table(DATA_DIR / "splits.csv", tmp_path / "d.tex").read_text(encoding="utf-8")
+    assert r"Total & 18{,}900 & 4{,}050 & 4{,}050 & 27{,}000 \\" in text
+    assert r"Share & 70.0\% & 15.0\% & 15.0\% & 100.0\% \\" in text
+
+
+def test_committed_dataset_table_is_current(tmp_path):
+    """If this fails, the manifest changed without rerunning build_tables.py --table dataset."""
+    from pr_edge.paths import DATA_DIR
+    from pr_edge.tables import build_dataset_table
+
+    fresh = build_dataset_table(DATA_DIR / "splits.csv", tmp_path / "fresh.tex")
+    assert (REPORT_DIR / "tables" / "dataset.tex").read_bytes() == fresh.read_bytes()
+
+
+def test_dataset_table_refuses_an_invalid_manifest(tmp_path):
+    from pr_edge.data import DataError
+    from pr_edge.tables import build_dataset_table
+
+    manifest = tmp_path / "splits.csv"
+    manifest.write_text("filepath,label,split\nForest/a.jpg,Forest,holdout\n", encoding="utf-8")
+    with pytest.raises(DataError, match="split"):
+        build_dataset_table(manifest, tmp_path / "d.tex")
+    assert not (tmp_path / "d.tex").exists()

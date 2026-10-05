@@ -394,7 +394,7 @@ not done until its test file passes.
 | `tests/test_model_a.py` | #9 | Forward pass shape `(N,3,64,64) -> (N,10)` |
 | `tests/test_model_b.py` | #10 | **`trainable_params <= 100_000`** — the brief's hard constraint |
 | `tests/test_sota.py` | #19 | Head replaced for 10 classes; freeze policy applied |
-| `tests/test_tables.py` | #18, #22 | Generated LaTeX contains every required column |
+| `tests/test_tables.py` | #9, #10, #18, #22, #24 | Generated LaTeX contains every required column; the dataset table reports the committed 70/15/15 split |
 | `tests/test_report.py` | #23 | Every section is `\input`; every plain reference exists; pending holes point at generator outputs |
 
 ---
