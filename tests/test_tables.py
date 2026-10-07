@@ -355,3 +355,24 @@ def test_dataset_table_refuses_an_invalid_manifest(tmp_path):
     with pytest.raises(DataError, match="split"):
         build_dataset_table(manifest, tmp_path / "d.tex")
     assert not (tmp_path / "d.tex").exists()
+
+
+def test_sota_cli_pairs_each_network_frozen_and_fine_tuned(monkeypatch):
+    """The run list behind --table sota: frozen/fine-tuned pairs, ablation last (#22, #54)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_tables", REPORT_DIR.parent / "scripts" / "build_tables.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    calls = []
+    monkeypatch.setattr(script, "build_sota_comparison", lambda run_ids, out: calls.append((run_ids, out)) or out)
+
+    script.main(["--table", "sota"])
+
+    (run_ids, out), = calls
+    assert run_ids == [
+        "mobilenetv2_64", "mobilenetv2_64_ft",
+        "efficientnetb0_64", "efficientnetb0_64_ft",
+        "mobilenetv2_224", "mobilenetv2_224_ft_b128",
+    ]
+    assert out == REPORT_DIR / "tables" / "sota_comparison.tex"
