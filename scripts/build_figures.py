@@ -30,12 +30,18 @@ BUILDERS = {
     "model_b_confusion": lambda: plot_confusion_matrix(
         "model_b", FIGURES_DIR / "model_b_confusion_matrix.png"
     ),
-    # Task 5 (#20): frozen vs fine-tuned at 64x64, then the 224x224 ablation,
-    # on one shared y-scale so the fine-tuning gain is visible at a glance.
+    # Task 5 (#20): frozen vs fine-tuned, one figure per input resolution so
+    # each pair shares a y-scale and stays readable at report width. All four
+    # runs use batch 128; the batch-32 record mobilenetv2_224_ft is not plotted.
     "sota_loss": lambda: plot_loss_curves(
-        ["mobilenetv2_64", "mobilenetv2_64_ft", "mobilenetv2_224_ft"],
+        ["mobilenetv2_64", "mobilenetv2_64_ft"],
         FIGURES_DIR / "sota_loss_curves.png",
-        title="MobileNetV2 training and validation loss",
+        title="MobileNetV2 at 64x64: training and validation loss",
+    ),
+    "sota_224_loss": lambda: plot_loss_curves(
+        ["mobilenetv2_224", "mobilenetv2_224_ft_b128"],
+        FIGURES_DIR / "sota_224_loss_curves.png",
+        title="MobileNetV2 at 224x224: training and validation loss",
     ),
     # The primary SOTA run: fine-tuned, at the custom models' 64x64 input.
     "mobilenetv2_64_ft_confusion": lambda: plot_confusion_matrix(

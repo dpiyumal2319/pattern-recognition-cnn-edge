@@ -143,10 +143,11 @@ def test_committed_figures_are_report_resolution():
         assert image.shape[1] >= 2400
 
 
-def test_sota_figure_is_report_resolution():
-    """Three side-by-side panels: wider than the two-panel custom figure."""
+@pytest.mark.parametrize("name", ["sota_loss_curves.png", "sota_224_loss_curves.png"])
+def test_sota_figures_are_report_resolution(name):
+    """Two side-by-side panels each (frozen, fine-tuned), like the custom figure."""
     figures = plots.RESULTS_DIR.parent / "report" / "figures"
-    image = mpimg.imread(figures / "sota_loss_curves.png")
+    image = mpimg.imread(figures / name)
     assert image.shape[0] >= 1800
     assert image.shape[1] >= 3600
 
@@ -175,7 +176,7 @@ def test_every_figure_builder_runs_on_committed_results(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "FIGURES_DIR", tmp_path)
 
-    assert {"sota_loss", "mobilenetv2_64_ft_confusion"} <= set(module.BUILDERS)
+    assert {"sota_loss", "sota_224_loss", "mobilenetv2_64_ft_confusion"} <= set(module.BUILDERS)
     assert module.main(["--all"]) == 0
     assert len(list(tmp_path.glob("*.png"))) == len(module.BUILDERS)
     assert (tmp_path / "sota_loss_curves.png").stat().st_size > 0
