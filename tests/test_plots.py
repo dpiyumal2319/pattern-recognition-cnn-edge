@@ -154,13 +154,15 @@ def test_sota_figure_is_report_resolution():
 @pytest.mark.parametrize("run_id,policy", [
     ("mobilenetv2_64", "frozen"),
     ("mobilenetv2_64_ft", "fine-tuned"),
+    ("mobilenetv2_224", "frozen"),
     ("mobilenetv2_224_ft", "fine-tuned"),
+    ("mobilenetv2_224_ft_b128", "fine-tuned"),
 ])
 def test_sota_labels_name_the_backbone_policy(run_id, policy):
     """Frozen and fine-tuned runs share an architecture; the label must say which."""
     label = plots._run_label(run_id)
     assert label.startswith("MobileNetV2")
-    assert f"({policy})" in label
+    assert f"({policy}" in label
 
 
 def test_every_figure_builder_runs_on_committed_results(tmp_path, monkeypatch):

@@ -236,6 +236,7 @@ Run IDs are fixed so issues can reference each other's outputs before they exist
 model_a   model_b   model_b_sgd   model_b_sgdm
 mobilenetv2_64   efficientnetb0_64   mobilenetv2_224
 mobilenetv2_64_ft   efficientnetb0_64_ft   mobilenetv2_224_ft   (#54: unfrozen-backbone partners)
+mobilenetv2_224_ft_b128   (#53: 224 fine-tune at batch 128; mobilenetv2_224_ft is the batch-32 record)
 ```
 
 **Numbers reach the report only through generated tables:**

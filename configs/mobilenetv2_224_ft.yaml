@@ -1,6 +1,7 @@
 # Task 5 - MobileNetV2 at 224x224, backbone UNFROZEN (supplementary resolution
-# ablation). Pairs with mobilenetv2_64_ft: the two differ only in input_size and
-# batch_size, so the comparison isolates resolution under the fine-tuning policy.
+# ablation), FIRST run at batch 32. Kept as a record: batch 32 vs 128 also
+# changed the updates per epoch, so mobilenetv2_224_ft_b128 is the clean
+# comparison with mobilenetv2_64_ft (#53).
 # Added by issue #20 (#54). Filename stem must equal run_id.
 run_id: mobilenetv2_224_ft
 seed: 42
