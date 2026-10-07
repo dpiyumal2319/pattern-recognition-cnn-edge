@@ -298,11 +298,15 @@ def build_sota_comparison(run_ids: list[str], out: Path) -> Path:
         )
         (primary if size == _PRIMARY_INPUT_SIZE else supplementary).append(row)
 
+    # Nine columns do not fit the text width on one header line, so the
+    # numeric headers stack name over unit. \shortstack needs no package, and
+    # [r] matches the right-aligned numbers beneath it.
     lines = [
         r"\begin{tabular}{lllrrrrrr}",
         r"\toprule",
-        r"Model & Backbone & Input & Accuracy (\%) & Precision (\%) & Recall (\%) & "
-        r"Parameters & Trained & Size (MB) \\",
+        r"Model & Backbone & Input & \shortstack[r]{Accuracy\\(\%)} & "
+        r"\shortstack[r]{Precision\\(\%)} & \shortstack[r]{Recall\\(\%)} & "
+        r"Parameters & Trained & \shortstack[r]{Size\\(MB)} \\",
         r"\midrule",
         *primary,
     ]

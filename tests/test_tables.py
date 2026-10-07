@@ -89,7 +89,7 @@ SOTA_RUNS = ["mobilenetv2_64", "mobilenetv2_224", "mobilenetv2_64_ft", "efficien
 def test_sota_comparison_reports_size_in_megabytes(sota_results, tmp_path):
     """The brief asks for MB here and KB for the custom models."""
     text = build_sota_comparison(SOTA_RUNS, tmp_path / "sota.tex").read_text(encoding="utf-8")
-    assert "Size (MB)" in text
+    assert r"\shortstack[r]{Size\\(MB)}" in text
     assert "KB" not in text
     assert r"& 8.77 \\" in text and r"& 15.63 \\" in text
 
@@ -97,8 +97,9 @@ def test_sota_comparison_reports_size_in_megabytes(sota_results, tmp_path):
 def test_sota_comparison_has_every_column_the_brief_requires(sota_results, tmp_path):
     """Accuracy, macro precision, macro recall, parameters and size, per row."""
     text = build_sota_comparison(SOTA_RUNS, tmp_path / "sota.tex").read_text(encoding="utf-8")
-    for column in (r"Accuracy (\%)", r"Precision (\%)", r"Recall (\%)", "Parameters", "Trained", "Size (MB)"):
+    for column in ("Accuracy", "Precision", "Recall", "Parameters", "Trained", "Size"):
         assert column in text
+    assert r"\shortstack[r]{Accuracy\\(\%)}" in text
     assert (r"MobileNetV2 & Fine-tuned & $64\times64$ & 98.02 & 97.92 & 97.94 & "
             r"2{,}236{,}682 & 2{,}236{,}682 & 8.77 \\") in text
     assert (r"EfficientNet-B0 & Frozen & $64\times64$ & 87.33 & 97.92 & 97.94 & "
