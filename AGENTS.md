@@ -233,7 +233,7 @@ Every experiment writes `results/<run_id>/`:
 Run IDs are fixed so issues can reference each other's outputs before they exist:
 
 ```
-model_a   model_b   model_b_sgd   model_b_sgdm
+model_a   model_a_100   model_b   model_b_100   model_b_sgd   model_b_sgdm
 mobilenetv2_64   efficientnetb0_64   mobilenetv2_224
 ```
 
