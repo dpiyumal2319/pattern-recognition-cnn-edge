@@ -7,12 +7,13 @@ comparison tests green; #9 added the layer-table tests. See docs/interfaces.md s
 from __future__ import annotations
 
 import json
+import shutil
 
 import pytest
 
 from pr_edge.paths import CONFIGS_DIR, REPORT_DIR
 import pr_edge.tables as tables
-from pr_edge.tables import build_custom_comparison, build_layer_table
+from pr_edge.tables import build_custom_comparison, build_custom_convergence, build_layer_table
 
 pending_sota = pytest.mark.skip(reason="not implemented yet - owned by #22")
 
@@ -101,6 +102,48 @@ def test_custom_table_requires_at_least_one_run(tmp_path):
 def test_committed_custom_table_is_current(tmp_path):
     committed = REPORT_DIR / "tables" / "custom_comparison.tex"
     fresh = build_custom_comparison(["model_a", "model_b"], tmp_path / "fresh.tex")
+    assert committed.read_bytes() == fresh.read_bytes()
+
+
+def test_custom_convergence_reports_budget_selection_and_resources(tmp_path):
+    text = build_custom_convergence(
+        ["model_a", "model_a_100", "model_b", "model_b_100"],
+        tmp_path / "convergence.tex",
+    ).read_text(encoding="utf-8")
+
+    assert "Epochs" in text
+    assert "Selected" in text
+    assert "Best val. loss" in text
+    assert "MACs" in text
+    assert r"Model A & 100 & 98 & 0.1355 & 96.00 & 96.00" in text
+    assert r"Model B & 100 & 100 & 0.2004 & 93.26 & 93.14" in text
+
+
+def test_custom_convergence_rejects_mixed_devices(tmp_path, monkeypatch):
+    results = tmp_path / "results"
+    for run_id in ("model_a", "model_b"):
+        shutil.copytree(tables.RESULTS_DIR / run_id, results / run_id)
+    profile_path = results / "model_b" / "profile.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile["device_name"] = "CPU"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    monkeypatch.setattr(tables, "RESULTS_DIR", results)
+
+    with pytest.raises(ValueError, match="must share one device"):
+        build_custom_convergence(["model_a", "model_b"], tmp_path / "mixed.tex")
+
+
+def test_custom_convergence_requires_at_least_one_run(tmp_path):
+    with pytest.raises(ValueError, match="at least one run_id"):
+        build_custom_convergence([], tmp_path / "convergence.tex")
+
+
+def test_committed_custom_convergence_table_is_current(tmp_path):
+    committed = REPORT_DIR / "tables" / "custom_convergence.tex"
+    fresh = build_custom_convergence(
+        ["model_a", "model_a_100", "model_b", "model_b_100"],
+        tmp_path / "fresh.tex",
+    )
     assert committed.read_bytes() == fresh.read_bytes()
 
 

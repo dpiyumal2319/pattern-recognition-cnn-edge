@@ -217,7 +217,8 @@ def profile_model(model: nn.Module, cfg: Config, mean_epoch_seconds: float) -> d
 ### `src/pr_edge/plots.py`
 
 ```python
-def plot_loss_curves(run_ids: list[str], out: Path, title: str | None = None) -> Path     [#17]
+def plot_loss_curves(run_ids: list[str], out: Path, title: str | None = None,
+                     reference_epoch: int | None = None) -> Path                           [#17, #60]
 def plot_confusion_matrix(run_id: str, out: Path, normalize: bool = True) -> Path         [#17]
 ```
 
@@ -226,6 +227,7 @@ def plot_confusion_matrix(run_id: str, out: Path, normalize: bool = True) -> Pat
 ```python
 def build_dataset_table(manifest: Path, out: Path) -> Path                [#24]
 def build_custom_comparison(run_ids: list[str], out: Path) -> Path        [#18]
+def build_custom_convergence(run_ids: list[str], out: Path) -> Path       [#60]
 def build_sota_comparison(run_ids: list[str], out: Path) -> Path          [#22]
 def build_final_comparison(run_ids: list[str], out: Path) -> Path         [#25]
 def build_layer_table(config: Path, out: Path) -> Path                   [#9, #10]
@@ -354,7 +356,7 @@ results/<run_id>/
 ```bash
 python scripts/prepare_data.py  --config configs/base.yaml [--force]
 python scripts/run_experiment.py --config configs/model_b.yaml [--smoke] [--epochs N] [--device D] [--run-id ID]
-python scripts/build_tables.py  [--all | --table custom|sota|dataset|final|model_a_layers|model_b_layers]
+python scripts/build_tables.py  [--all | --table custom|custom_convergence|sota|dataset|final|model_a_layers|model_b_layers]
 python scripts/build_report.py  [--clean]          # latexmk on report/main.tex -> report/main.pdf  [#23]
 ```
 

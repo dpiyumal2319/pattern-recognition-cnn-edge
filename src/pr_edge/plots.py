@@ -33,7 +33,12 @@ def _read_json(path: Path) -> object:
 
 
 def _run_label(run_id: str) -> str:
-    labels = {"model_a": "Model A", "model_b": "Model B"}
+    labels = {
+        "model_a": "Model A",
+        "model_a_100": "Model A (100 epochs)",
+        "model_b": "Model B",
+        "model_b_100": "Model B (100 epochs)",
+    }
     return labels.get(run_id, run_id.replace("_", " ").title())
 
 
@@ -45,7 +50,12 @@ def _save(fig, out: Path) -> Path:
     return out
 
 
-def plot_loss_curves(run_ids: list[str], out: Path, title: str | None = None) -> Path:
+def plot_loss_curves(
+    run_ids: list[str],
+    out: Path,
+    title: str | None = None,
+    reference_epoch: int | None = None,
+) -> Path:
     """Training and validation loss against epoch, one series pair per run.
 
     Each run gets its own axis so its train/validation pair stays readable.
@@ -103,6 +113,14 @@ def plot_loss_curves(run_ids: list[str], out: Path, title: str | None = None) ->
             linewidth=2.1,
             label="Validation",
         )
+        if reference_epoch is not None:
+            axis.axvline(
+                reference_epoch,
+                color="#111827",
+                linestyle="--",
+                linewidth=1.5,
+                label=f"Original stop ({reference_epoch})",
+            )
         axis.set_title(_run_label(run_id), fontweight="bold")
         axis.set_xlabel("Epoch")
         axis.set_ylim(lower, upper + padding)

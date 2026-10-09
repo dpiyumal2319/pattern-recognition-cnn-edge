@@ -24,6 +24,12 @@ BUILDERS = {
         FIGURES_DIR / "custom_loss_curves.png",
         title="Custom CNN training and validation loss",
     ),
+    "convergence": lambda: plot_loss_curves(
+        ["model_a_100", "model_b_100"],
+        FIGURES_DIR / "custom_convergence.png",
+        title="Custom CNN 100-epoch convergence control",
+        reference_epoch=30,
+    ),
     "model_a_confusion": lambda: plot_confusion_matrix(
         "model_a", FIGURES_DIR / "model_a_confusion_matrix.png"
     ),
