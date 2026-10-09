@@ -195,12 +195,59 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
         "mobilenetv2_64.yaml": ("mobilenet_v2", 64),
         "efficientnetb0_64.yaml": ("efficientnet_b0", 64),
         "mobilenetv2_224.yaml": ("mobilenet_v2", 224),
+        "mobilenetv2_64_ft.yaml": ("mobilenet_v2", 64),
+        "mobilenetv2_224_ft.yaml": ("mobilenet_v2", 224),
+        "mobilenetv2_224_ft_b128.yaml": ("mobilenet_v2", 224),
     }
     for filename, (name, size) in expected.items():
         cfg = load_config(CONFIGS_DIR / filename)
         assert cfg.model.name == name
         assert cfg.data.input_size == size
         assert Path(cfg.data.manifest).as_posix() == "data/splits.csv"
+
+
+@pytest.mark.parametrize("frozen,fine_tuned", [
+    ("mobilenetv2_64", "mobilenetv2_64_ft"),
+    ("mobilenetv2_224", "mobilenetv2_224_ft_b128"),
+])
+def test_fine_tune_config_differs_from_frozen_partner_only_in_policy(frozen, fine_tuned):
+    """The _ft run is the 'fine-tune' half of CNNs.pdf p58's 'keep frozen or
+    fine-tune'. Anything else differing would confound the comparison."""
+    base = load_config(CONFIGS_DIR / f"{frozen}.yaml")
+    ft = load_config(CONFIGS_DIR / f"{fine_tuned}.yaml")
+
+    assert base.model.freeze_backbone is True
+    assert ft.model.freeze_backbone is False
+    assert ft.optimizer.lr < base.optimizer.lr
+
+    # Normalise the two intended differences away; everything else must match.
+    aligned = replace(
+        ft,
+        run_id=base.run_id,
+        model=replace(ft.model, freeze_backbone=base.model.freeze_backbone),
+        optimizer=replace(ft.optimizer, lr=base.optimizer.lr),
+    )
+    assert aligned == base
+
+
+@pytest.mark.parametrize("low,high", [
+    ("mobilenetv2_64", "mobilenetv2_224"),
+    ("mobilenetv2_64_ft", "mobilenetv2_224_ft_b128"),
+])
+def test_resolution_ablation_differs_only_in_input_size(low, high):
+    """64 vs 224 must isolate resolution. An earlier 224 run used batch 32
+    against 128, which also changed the number of updates per epoch; it is kept
+    as mobilenetv2_224_ft and excluded from this guard (#53)."""
+    small = load_config(CONFIGS_DIR / f"{low}.yaml")
+    large = load_config(CONFIGS_DIR / f"{high}.yaml")
+
+    assert (small.data.input_size, large.data.input_size) == (64, 224)
+    aligned = replace(
+        large,
+        run_id=small.run_id,
+        data=replace(large.data, input_size=small.data.input_size),
+    )
+    assert aligned == small
 
 
 @pytest.mark.parametrize("change,message", [

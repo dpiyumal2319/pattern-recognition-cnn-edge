@@ -1,0 +1,38 @@
+# Task 5 - MobileNetV2 at 224x224, backbone UNFROZEN (supplementary resolution
+# ablation) at batch 128. Pairs with mobilenetv2_64_ft: the two differ only in
+# input_size, so the comparison isolates resolution (#53).
+# Added by issue #20 (#54). Filename stem must equal run_id.
+run_id: mobilenetv2_224_ft_b128
+seed: 42
+device: auto
+
+data:
+  root: data/
+  manifest: data/splits.csv
+  input_size: 224
+  # 128 like every other run. Measured need for full fine-tuning at 224:
+  # ~9.9 GB of a T4's 16 GB (#53).
+  batch_size: 128
+  num_workers: 2
+  augment: true
+  norm_stats: data/norm_stats.json
+
+model:
+  name: mobilenet_v2
+  num_classes: 10
+  channels: []
+  head: gap
+  dropout: 0.2
+  pretrained: true
+  freeze_backbone: false
+
+optimizer:
+  name: adam
+  # Same fine-tuning rate as mobilenetv2_64_ft (Keras EfficientNet tutorial, CNNs.pdf p58).
+  lr: 0.0001
+  momentum: 0.0
+  weight_decay: 0.0
+
+training:
+  epochs: 30
+  smoke: false
