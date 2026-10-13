@@ -1,0 +1,38 @@
+# Task 5 - EfficientNet-B0 at 224x224, backbone UNFROZEN, batch 32. Mirrors
+# mobilenetv2_224_ft so both architectures have the same batch 32 vs 128 record.
+# Batch also changes the updates per epoch, so efficientnetb0_224_ft_b128 is
+# the clean comparison with efficientnetb0_64_ft.
+# Added by issue #21. Filename stem must equal run_id.
+run_id: efficientnetb0_224_ft
+seed: 42
+device: auto
+
+data:
+  root: data/
+  manifest: data/splits.csv
+  input_size: 224
+  batch_size: 32
+  num_workers: 2
+  augment: true
+  norm_stats: data/norm_stats.json
+
+model:
+  name: efficientnet_b0
+  num_classes: 10
+  channels: []
+  head: gap
+  dropout: 0.2
+  pretrained: true
+  freeze_backbone: false
+
+optimizer:
+  name: adam
+  # 1e-4: the fine-tuning rate of the Keras EfficientNet tutorial linked on
+  # CNNs.pdf p58. 1e-3 risks overwriting the pretrained ImageNet features.
+  lr: 0.0001
+  momentum: 0.0
+  weight_decay: 0.0
+
+training:
+  epochs: 30
+  smoke: false
