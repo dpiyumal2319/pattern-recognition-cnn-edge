@@ -1,0 +1,37 @@
+# Task 5 - MobileNetV2 at 64x64, backbone UNFROZEN (full fine-tune).
+# Paired with mobilenetv2_64 (frozen backbone): CNNs.pdf p58 "keep frozen or
+# fine-tune". Only freeze_backbone and lr differ between the two configs.
+# Added by issue #20. Filename stem must equal run_id.
+run_id: mobilenetv2_64_ft
+seed: 42
+device: auto
+
+data:
+  root: data/
+  manifest: data/splits.csv
+  input_size: 64
+  batch_size: 128
+  num_workers: 2
+  augment: true
+  norm_stats: data/norm_stats.json
+
+model:
+  name: mobilenet_v2
+  num_classes: 10
+  channels: []
+  head: gap
+  dropout: 0.2
+  pretrained: true
+  freeze_backbone: false
+
+optimizer:
+  name: adam
+  # 1e-4: the fine-tuning rate of the Keras EfficientNet tutorial linked on
+  # CNNs.pdf p58. 1e-3 risks overwriting the pretrained ImageNet features.
+  lr: 0.0001
+  momentum: 0.0
+  weight_decay: 0.0
+
+training:
+  epochs: 30
+  smoke: false

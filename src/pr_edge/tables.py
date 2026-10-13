@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from .paths import RESULTS_DIR
+from .schemas import validate_metrics, validate_profile
 
 
 # Keras-style layer names, as in the model.summary() table on CNNs.pdf p54, so
@@ -101,8 +102,46 @@ def build_layer_table(config: Path, out: Path) -> Path:
 
 
 def build_dataset_table(manifest: Path, out: Path) -> Path:
-    """Per-class counts across the train/val/test splits. Implemented by #24."""
-    raise NotImplementedError("build_dataset_table is issue #24")
+    """Per-class image counts in each split, read from the committed manifest.
+
+    Rows follow CLASS_NAMES order, then a total row and a share row that shows
+    the realised 70/15/15 proportions. Built from data/splits.csv itself - the
+    file every experiment reads - so the table can only describe the partition
+    that was actually used. Implemented by #24.
+    """
+    from .data import CLASS_NAMES, SPLIT_FRACTIONS, read_manifest, validate_manifest
+
+    rows = read_manifest(manifest)
+    # Refuse to tabulate a manifest the experiments themselves would reject.
+    validate_manifest(rows)
+
+    splits = list(SPLIT_FRACTIONS)
+    counts = {name: dict.fromkeys(splits, 0) for name in CLASS_NAMES}
+    for row in rows:
+        counts[row["label"]][row["split"]] += 1
+    totals = {split: sum(counts[name][split] for name in CLASS_NAMES) for split in splits}
+    grand = sum(totals.values())
+
+    lines = [
+        r"\begin{tabular}{lrrrr}",
+        r"\toprule",
+        r"Class & Train & Validation & Test & Total \\",
+        r"\midrule",
+    ]
+    for name in CLASS_NAMES:
+        cells = [_thousands(counts[name][split]) for split in splits]
+        lines.append(f"{name} & {' & '.join(cells)} & {_thousands(sum(counts[name].values()))} \\\\")
+    lines.append(r"\midrule")
+    cells = [_thousands(totals[split]) for split in splits]
+    lines.append(f"Total & {' & '.join(cells)} & {_thousands(grand)} \\\\")
+    shares = [f"{100 * totals[split] / grand:.1f}\\%" for split in splits]
+    lines.append(f"Share & {' & '.join(shares)} & 100.0\\% \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Explicit "\n" so the generated file is byte-identical on every platform.
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
 
 
 def build_custom_comparison(run_ids: list[str], out: Path) -> Path:
@@ -112,7 +151,45 @@ def build_custom_comparison(run_ids: list[str], out: Path) -> Path:
     on disk (KB), training time per epoch, and test accuracy. Macro precision
     and recall are added because task 4 requires them too. Implemented by #18.
     """
-    raise NotImplementedError("build_custom_comparison is issue #18")
+    if not run_ids:
+        raise ValueError("build_custom_comparison requires at least one run_id")
+
+    lines = [
+        r"\begin{tabular}{lrrrrrr}",
+        r"\hline",
+        r"Model & Parameters & Size (KB) & Epoch (s) & Accuracy (\%) & Precision (\%) & Recall (\%) \\",
+        r"\hline",
+    ]
+    for run_id in run_ids:
+        directory = RESULTS_DIR / run_id
+        paths = {
+            "metrics": directory / "metrics.json",
+            "profile": directory / "profile.json",
+        }
+        missing = [path.name for path in paths.values() if not path.is_file()]
+        if missing:
+            raise FileNotFoundError(f"run {run_id!r} is missing custom table artifact(s): {missing}")
+
+        metrics = json.loads(paths["metrics"].read_text(encoding="utf-8"))
+        profile = json.loads(paths["profile"].read_text(encoding="utf-8"))
+        errors = validate_metrics(metrics) + validate_profile(profile)
+        if errors:
+            raise ValueError(f"run {run_id!r} has invalid result artifacts: {'; '.join(errors)}")
+        if metrics["run_id"] != run_id or profile["run_id"] != run_id:
+            raise ValueError(f"run {run_id!r} contains an artifact with a different run_id")
+
+        label = run_id.replace("_", " ").title()
+        size_kb = f"{profile['disk_size_kb']:,.2f}".replace(",", "{,}")
+        lines.append(
+            f"{label} & {_thousands(profile['total_params'])} & {size_kb} & "
+            f"{profile['mean_epoch_seconds']:.2f} & {100 * metrics['accuracy']:.2f} & "
+            f"{100 * metrics['macro_precision']:.2f} & {100 * metrics['macro_recall']:.2f} \\\\"
+        )
+    lines += [r"\hline", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
 
 
 def build_optimizer_comparison(run_ids: list[str], out: Path) -> Path:

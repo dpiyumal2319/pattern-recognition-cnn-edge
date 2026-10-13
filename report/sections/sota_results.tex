@@ -1,0 +1,35 @@
+% Owned by #22 (SOTA metrics table), with results from #20 (MobileNetV2) and
+% #21 (EfficientNet-B0). Stub created by #23.
+%
+% To write: the two pretrained lightweight architectures fine-tuned on the
+% same split as the custom models, their performance metrics, and - as the
+% brief requires - total parameter count and model size in MB (MB here, KB
+% for the custom models: the difference in magnitude is itself the point).
+% The frozen vs fine-tuned and 64 vs 224 comparisons belong here too.
+
+\subsection{Fine-tuning and evaluation}
+\label{sec:sota-results}
+
+\pending{fine-tuning protocol and results discussion for MobileNetV2 and
+EfficientNet-B0 (\#22)}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Fine-tuned lightweight SOTA models on the EuroSAT test split.}
+  \label{tab:sota-comparison}
+  \generatedtable{tables/sota_comparison.tex}{\#22}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure{figures/sota_loss_curves.png}{\#20}
+  \caption{Training and validation loss of the fine-tuned SOTA models.}
+  \label{fig:sota-loss}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure[width=0.82\linewidth]{figures/mobilenetv2_64_ft_confusion_matrix.png}{\#20}
+  \caption{Test confusion matrix of the fine-tuned MobileNetV2 at $64\times64$.}
+  \label{fig:mobilenetv2-confusion}
+\end{figure}

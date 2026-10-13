@@ -8,7 +8,9 @@ data:
   root: data/
   manifest: data/splits.csv
   input_size: 224
-  batch_size: 32
+  # 128 like every other run, so 64 vs 224 changes resolution only. Measured
+  # need for full fine-tuning at 224: ~9.9 GB of a T4's 16 GB (#53).
+  batch_size: 128
   num_workers: 2
   augment: true
   norm_stats: data/norm_stats.json
