@@ -1,4 +1,4 @@
-"""Task 4 loss-curve and confusion-matrix figure generation."""
+"""Task 4 and task 5 loss-curve and confusion-matrix figure generation."""
 
 from __future__ import annotations
 
@@ -136,7 +136,48 @@ def test_committed_figures_are_report_resolution():
         "custom_loss_curves.png",
         "model_a_confusion_matrix.png",
         "model_b_confusion_matrix.png",
+        "mobilenetv2_64_ft_confusion_matrix.png",
     ):
         image = mpimg.imread(figures / name)
         assert image.shape[0] >= 1800
         assert image.shape[1] >= 2400
+
+
+@pytest.mark.parametrize("name", ["sota_loss_curves.png", "sota_224_loss_curves.png"])
+def test_sota_figures_are_report_resolution(name):
+    """Two side-by-side panels each (frozen, fine-tuned), like the custom figure."""
+    figures = plots.RESULTS_DIR.parent / "report" / "figures"
+    image = mpimg.imread(figures / name)
+    assert image.shape[0] >= 1800
+    assert image.shape[1] >= 3600
+
+
+@pytest.mark.parametrize("run_id,policy", [
+    ("mobilenetv2_64", "frozen"),
+    ("mobilenetv2_64_ft", "fine-tuned"),
+    ("mobilenetv2_224", "frozen"),
+    ("mobilenetv2_224_ft", "fine-tuned"),
+    ("mobilenetv2_224_ft_b128", "fine-tuned"),
+])
+def test_sota_labels_name_the_backbone_policy(run_id, policy):
+    """Frozen and fine-tuned runs share an architecture; the label must say which."""
+    label = plots._run_label(run_id)
+    assert label.startswith("MobileNetV2")
+    assert f"({policy}" in label
+
+
+def test_every_figure_builder_runs_on_committed_results(tmp_path, monkeypatch):
+    """Each figure the script promises regenerates from results/ with one command."""
+    import importlib.util
+
+    script = plots.RESULTS_DIR.parent / "scripts" / "build_figures.py"
+    spec = importlib.util.spec_from_file_location("build_figures", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "FIGURES_DIR", tmp_path)
+
+    assert {"sota_loss", "sota_224_loss", "mobilenetv2_64_ft_confusion"} <= set(module.BUILDERS)
+    assert module.main(["--all"]) == 0
+    assert len(list(tmp_path.glob("*.png"))) == len(module.BUILDERS)
+    assert (tmp_path / "sota_loss_curves.png").stat().st_size > 0
+    assert (tmp_path / "mobilenetv2_64_ft_confusion_matrix.png").stat().st_size > 0
