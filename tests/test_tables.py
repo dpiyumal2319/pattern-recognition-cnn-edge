@@ -375,5 +375,6 @@ def test_sota_cli_pairs_each_network_frozen_and_fine_tuned(monkeypatch):
         "mobilenetv2_64", "mobilenetv2_64_ft",
         "efficientnetb0_64", "efficientnetb0_64_ft",
         "mobilenetv2_224", "mobilenetv2_224_ft_b128",
+        "efficientnetb0_224", "efficientnetb0_224_ft_b128",
     ]
     assert out == REPORT_DIR / "tables" / "sota_comparison.tex"
