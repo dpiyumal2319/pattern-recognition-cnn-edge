@@ -32,9 +32,10 @@ network was run both ways, so the choice is measured rather than assumed.
 The primary runs keep the input at $64\times64$, the resolution the custom
 models see. That is the only like-for-like comparison with Model~B, and it is
 what an edge device would actually be given. Because ImageNet networks are
-designed for $224\times224$ input, one supplementary pair repeats MobileNetV2
-with the $64\times64$ images upsampled to $224\times224$. The two pairs differ
-in input size only, so the ablation isolates what resolution buys.
+designed for $224\times224$ input, a supplementary pair repeats each network
+with the $64\times64$ images upsampled to $224\times224$. Each supplementary
+pair differs from its primary pair in input size only, so the ablation
+isolates what resolution buys.
 
 \subsection{Results}
 \label{sec:sota-results}
@@ -59,33 +60,41 @@ columns are worth reading together. \emph{Parameters} and \emph{Size} are
 identical for the frozen and fine-tuned runs of a network, because freezing
 changes what is trained, not what is deployed. \emph{Trained} is where they
 differ: a frozen backbone updates only the prediction layer, well under one
-per cent of the network, against every weight when fine-tuned. Any accuracy gap between the two
-rows of a pair is therefore bought with training effort alone, at no cost in
-memory or in operations per image.
+per cent of the network, against every weight when fine-tuned. Any accuracy
+gap between the two rows of a pair is therefore bought with training effort
+alone, at no cost in memory or in operations per image.
 
-For MobileNetV2 that gap is large. Fine-tuning raises every metric well above
-the frozen feature extractor. The likely explanation is a domain shift.
+For both networks that gap is large. Fine-tuning raises every metric well
+above the frozen feature extractor. The likely explanation is a domain shift.
 ImageNet filters were learnt on close-range photographs of objects, while
-EuroSAT is overhead satellite imagery at a much coarser scale. A frozen backbone can
-only re-weight features that were learnt for the wrong kind of image;
-fine-tuning lets the filters themselves move towards field boundaries, road
-textures and water.
+EuroSAT is overhead satellite imagery at a much coarser scale. A frozen
+backbone can only re-weight features that were learnt for the wrong kind of
+image; fine-tuning lets the filters themselves move towards field boundaries,
+road textures and water.
 
-\pending{EfficientNet-B0 frozen vs fine-tuned comparison, once
-\texttt{efficientnetb0\_64\_ft} is run (\#21, \#54).}
+The two architectures also rank differently under the two strategies. Frozen,
+EfficientNet-B0 is clearly the weaker network, despite having almost twice
+MobileNetV2's parameters. Fine-tuned, the two are practically level. The
+frozen gap therefore says how well each network's ImageNet features happen to
+transfer to $64\times64$ overhead images, not how much each network can learn.
+EfficientNet-B0's compound scaling assumes $224\times224$ input, and at
+$64\times64$ its downsampling stages leave a $2\times2$ final feature map; its
+fixed features suffer more from the small input than MobileNetV2's do. Once
+fine-tuned, however, EfficientNet-B0 offers no meaningful accuracy over
+MobileNetV2 for nearly twice the memory. MobileNetV2 is the better edge
+candidate of the two.
 
 The supplementary rows show that resolution and fine-tuning are partly
-substitutes. Upsampling to $224\times224$ clearly helps the frozen backbone. A
-frozen network's filters are fixed at ImageNet's object scale, so enlarging
-the input is the only way to bring the data to them. Fine-tuning instead moves
-the filters to the data, and the fine-tuned $64\times64$ model outperforms the
-frozen $224\times224$ one. It does so at about $(224/64)^2\approx12$ times fewer
+substitutes. Upsampling to $224\times224$ gives both frozen backbones a gain of
+several points, but the fine-tuned models gain less than one. A frozen
+network's filters are fixed at ImageNet's object scale, so enlarging the input
+is the only way to bring the data to them. Fine-tuning instead moves the
+filters to the data, after which resolution matters much less: for each
+network, the fine-tuned $64\times64$ model outperforms the frozen
+$224\times224$ one. It does so at about $(224/64)^2\approx12$ times fewer
 operations per image, because a convolution's cost scales with the $H\times W$
 of its output and the network is otherwise unchanged. For an edge device,
 fine-tuning at native resolution is the cheaper way to get accuracy.
-
-\pending{how much the fine-tuned model still gains from $224\times224$, once
-\texttt{mobilenetv2\_224\_ft\_b128} is run (\#20).}
 
 Even the smallest of these models is one to two orders of magnitude larger on
 disk than Model~B (Table~\ref{tab:custom-comparison}). That is why the two tables
@@ -95,8 +104,17 @@ question Section~\ref{sec:task6} answers.
 \begin{figure}[htbp]
   \centering
   \generatedfigure{figures/sota_loss_curves.png}{\#20}
-  \caption{Training and validation loss of the pretrained MobileNetV2 runs.}
+  \caption{Training and validation loss of MobileNetV2 at $64\times64$, with
+  the backbone frozen and fine-tuned.}
   \label{fig:sota-loss}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure{figures/sota_224_loss_curves.png}{\#20}
+  \caption{Training and validation loss of MobileNetV2 at $224\times224$ (the
+  supplementary resolution ablation), with the backbone frozen and fine-tuned.}
+  \label{fig:sota-224-loss}
 \end{figure}
 
 \begin{figure}[htbp]
