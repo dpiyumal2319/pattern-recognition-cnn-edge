@@ -38,6 +38,13 @@ def _run_label(run_id: str) -> str:
         "model_a_100": "Model A (100 epochs)",
         "model_b": "Model B",
         "model_b_100": "Model B (100 epochs)",
+        # SOTA runs (#20, #54): name the backbone policy, since the frozen and
+        # fine-tuned runs share an architecture and differ only in training.
+        "mobilenetv2_64": "MobileNetV2 64x64 (frozen)",
+        "mobilenetv2_64_ft": "MobileNetV2 64x64 (fine-tuned)",
+        "mobilenetv2_224": "MobileNetV2 224x224 (frozen)",
+        "mobilenetv2_224_ft": "MobileNetV2 224x224 (fine-tuned, batch 32)",
+        "mobilenetv2_224_ft_b128": "MobileNetV2 224x224 (fine-tuned)",
     }
     return labels.get(run_id, run_id.replace("_", " ").title())
 
