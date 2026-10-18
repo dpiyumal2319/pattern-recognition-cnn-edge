@@ -10,12 +10,16 @@ import json
 import shutil
 
 import pytest
+import yaml
 
 from pr_edge.paths import CONFIGS_DIR, REPORT_DIR
 import pr_edge.tables as tables
-from pr_edge.tables import build_custom_comparison, build_custom_convergence, build_layer_table
-
-pending_sota = pytest.mark.skip(reason="not implemented yet - owned by #22")
+from pr_edge.tables import (
+    build_custom_comparison,
+    build_custom_convergence,
+    build_layer_table,
+    build_sota_comparison,
+)
 
 
 def _write_custom_run(root, run_id="model_a"):
@@ -45,9 +49,152 @@ def test_custom_comparison_has_every_column_the_brief_requires(tmp_path, monkeyp
     assert r"Model A & 692{,}106 & 2{,}708.06 & 11.80 & 92.89 & 93.20 & 92.52 \\" in text
 
 
-@pending_sota
-def test_sota_comparison_reports_size_in_megabytes():
+def _write_sota_run(root, run_id, *, name="mobilenet_v2", freeze=False, input_size=64,
+                    accuracy=0.9802, params=2_236_682, trainable=None, size_mb=8.7696):
+    """A schema-valid SOTA run directory: config, metrics and profile.
+
+    metrics.json and profile.json start from a committed custom run (so they
+    satisfy the schema) and override only the fields the SOTA table reads.
+    """
+    source = tables.RESULTS_DIR / "model_b"
+    target = root / run_id
+    target.mkdir(parents=True)
+    metrics = json.loads((source / "metrics.json").read_text(encoding="utf-8"))
+    metrics.update(run_id=run_id, accuracy=accuracy, macro_precision=0.9792, macro_recall=0.9794)
+    profile = json.loads((source / "profile.json").read_text(encoding="utf-8"))
+    profile.update(run_id=run_id, total_params=params, disk_size_mb=size_mb,
+                   trainable_params=params if trainable is None else trainable)
+    config = {
+        "run_id": run_id,
+        "data": {"input_size": input_size},
+        "model": {"name": name, "freeze_backbone": freeze},
+    }
+    (target / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
+    (target / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+    (target / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    return target
+
+
+@pytest.fixture
+def sota_results(tmp_path, monkeypatch):
+    """Frozen and fine-tuned MobileNetV2, EfficientNet-B0 and a 224x224 ablation."""
+    results = tmp_path / "results"
+    _write_sota_run(results, "mobilenetv2_64", freeze=True, accuracy=0.9304, trainable=12_810)
+    _write_sota_run(results, "mobilenetv2_64_ft")
+    _write_sota_run(results, "efficientnetb0_64", name="efficientnet_b0", freeze=True,
+                    accuracy=0.8733, params=4_020_358, trainable=12_810, size_mb=15.6265)
+    _write_sota_run(results, "mobilenetv2_224", freeze=True, input_size=224,
+                    accuracy=0.9615, trainable=12_810)
+    monkeypatch.setattr(tables, "RESULTS_DIR", results)
+    return results
+
+
+SOTA_RUNS = ["mobilenetv2_64", "mobilenetv2_224", "mobilenetv2_64_ft", "efficientnetb0_64"]
+
+
+def test_sota_comparison_reports_size_in_megabytes(sota_results, tmp_path):
     """The brief asks for MB here and KB for the custom models."""
+    text = build_sota_comparison(SOTA_RUNS, tmp_path / "sota.tex").read_text(encoding="utf-8")
+    assert r"\shortstack[r]{Size\\(MB)}" in text
+    assert "KB" not in text
+    assert r"& 8.77 \\" in text and r"& 15.63 \\" in text
+
+
+def test_sota_comparison_has_every_column_the_brief_requires(sota_results, tmp_path):
+    """Accuracy, macro precision, macro recall, parameters and size, per row."""
+    text = build_sota_comparison(SOTA_RUNS, tmp_path / "sota.tex").read_text(encoding="utf-8")
+    for column in ("Accuracy", "Precision", "Recall", "Parameters", "Trained", "Size"):
+        assert column in text
+    assert r"\shortstack[r]{Accuracy\\(\%)}" in text
+    assert (r"MobileNetV2 & Fine-tuned & $64\times64$ & 98.02 & 97.92 & 97.94 & "
+            r"2{,}236{,}682 & 2{,}236{,}682 & 8.77 \\") in text
+    assert (r"EfficientNet-B0 & Frozen & $64\times64$ & 87.33 & 97.92 & 97.94 & "
+            r"4{,}020{,}358 & 12{,}810 & 15.63 \\") in text
+
+
+def test_sota_supplementary_rows_are_labelled_and_below_primary(sota_results, tmp_path):
+    """The 224x224 run is passed second but must render under its own label, last."""
+    text = build_sota_comparison(SOTA_RUNS, tmp_path / "sota.tex").read_text(encoding="utf-8")
+    label = text.index("Supplementary")
+    supplementary_row = text.index(r"MobileNetV2 & Frozen & $224\times224$")
+    assert label < supplementary_row
+    for primary in (r"MobileNetV2 & Frozen & $64\times64$", r"MobileNetV2 & Fine-tuned & $64\times64$",
+                    r"EfficientNet-B0 & Frozen & $64\times64$"):
+        assert text.index(primary) < label
+    # Primary rows keep the caller's order.
+    assert text.index("MobileNetV2 & Frozen & $64") < text.index("MobileNetV2 & Fine-tuned")
+    assert text.index("MobileNetV2 & Fine-tuned") < text.index("EfficientNet-B0")
+
+
+def test_sota_table_without_ablation_has_no_supplementary_group(sota_results, tmp_path):
+    text = build_sota_comparison(["mobilenetv2_64_ft"], tmp_path / "sota.tex").read_text(encoding="utf-8")
+    assert "Supplementary" not in text
+
+
+def test_sota_labels_come_from_the_config_not_the_run_id(tmp_path, monkeypatch):
+    """A run named like a fine-tune but configured frozen is labelled frozen."""
+    results = tmp_path / "results"
+    _write_sota_run(results, "mobilenetv2_64_ft", freeze=True, input_size=224)
+    monkeypatch.setattr(tables, "RESULTS_DIR", results)
+    text = build_sota_comparison(["mobilenetv2_64_ft"], tmp_path / "sota.tex").read_text(encoding="utf-8")
+    assert r"MobileNetV2 & Frozen & $224\times224$" in text
+
+
+def test_sota_table_is_a_reproducible_bare_tabular(sota_results, tmp_path):
+    first = build_sota_comparison(SOTA_RUNS, tmp_path / "a.tex").read_bytes()
+    second = build_sota_comparison(SOTA_RUNS, tmp_path / "b.tex").read_bytes()
+    assert first == second
+    assert b"\r\n" not in first
+    text = first.decode("utf-8")
+    assert text.startswith(r"\begin{tabular}") and text.rstrip().endswith(r"\end{tabular}")
+    assert r"\begin{table}" not in text
+
+
+def test_sota_table_missing_run_fails_loudly(tmp_path, monkeypatch):
+    monkeypatch.setattr(tables, "RESULTS_DIR", tmp_path / "results")
+    with pytest.raises(FileNotFoundError, match="missing.*config.yaml.*metrics.json.*profile.json"):
+        build_sota_comparison(["not_there"], tmp_path / "sota.tex")
+
+
+def test_sota_table_requires_at_least_one_run(tmp_path):
+    with pytest.raises(ValueError, match="at least one run_id"):
+        build_sota_comparison([], tmp_path / "sota.tex")
+
+
+def test_sota_table_rejects_mislabeled_artifact(sota_results, tmp_path):
+    path = sota_results / "mobilenetv2_64" / "metrics.json"
+    metrics = json.loads(path.read_text(encoding="utf-8"))
+    metrics["run_id"] = "mobilenetv2_64_ft"
+    path.write_text(json.dumps(metrics), encoding="utf-8")
+    with pytest.raises(ValueError, match="different run_id"):
+        build_sota_comparison(["mobilenetv2_64"], tmp_path / "sota.tex")
+
+
+def test_sota_table_rejects_invalid_artifact_schema(sota_results, tmp_path):
+    path = sota_results / "mobilenetv2_64" / "profile.json"
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    del profile["disk_size_mb"]
+    path.write_text(json.dumps(profile), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid result artifacts.*disk_size_mb"):
+        build_sota_comparison(["mobilenetv2_64"], tmp_path / "sota.tex")
+
+
+def test_sota_table_rejects_validation_split_metrics(sota_results, tmp_path):
+    """Only held-out test results belong in the table."""
+    path = sota_results / "mobilenetv2_64" / "metrics.json"
+    metrics = json.loads(path.read_text(encoding="utf-8"))
+    metrics["split"] = "val"
+    path.write_text(json.dumps(metrics), encoding="utf-8")
+    with pytest.raises(ValueError, match="not 'test'"):
+        build_sota_comparison(["mobilenetv2_64"], tmp_path / "sota.tex")
+
+
+def test_sota_table_rejects_a_custom_model(tmp_path, monkeypatch):
+    results = tmp_path / "results"
+    _write_sota_run(results, "model_b", name="model_b")
+    monkeypatch.setattr(tables, "RESULTS_DIR", results)
+    with pytest.raises(ValueError, match="not a SOTA model"):
+        build_sota_comparison(["model_b"], tmp_path / "sota.tex")
 
 
 def test_custom_table_is_a_bare_tabular_fragment(tmp_path, monkeypatch):
@@ -257,3 +404,38 @@ def test_dataset_table_refuses_an_invalid_manifest(tmp_path):
     with pytest.raises(DataError, match="split"):
         build_dataset_table(manifest, tmp_path / "d.tex")
     assert not (tmp_path / "d.tex").exists()
+
+
+def test_sota_cli_pairs_each_network_frozen_and_fine_tuned(monkeypatch):
+    """The run list behind --table sota: frozen/fine-tuned pairs, ablation last (#22, #54)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_tables", REPORT_DIR.parent / "scripts" / "build_tables.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    calls = []
+    monkeypatch.setattr(script, "build_sota_comparison", lambda run_ids, out: calls.append((run_ids, out)) or out)
+
+    script.main(["--table", "sota"])
+
+    (run_ids, out), = calls
+    assert run_ids == [
+        "mobilenetv2_64", "mobilenetv2_64_ft",
+        "efficientnetb0_64", "efficientnetb0_64_ft",
+        "mobilenetv2_224", "mobilenetv2_224_ft_b128",
+        "efficientnetb0_224", "efficientnetb0_224_ft_b128",
+    ]
+    assert out == REPORT_DIR / "tables" / "sota_comparison.tex"
+
+
+def test_committed_sota_table_is_current(tmp_path):
+    """If this fails, a SOTA run changed without rerunning build_tables.py --table sota."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_tables", REPORT_DIR.parent / "scripts" / "build_tables.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    # Build through the CLI's own run list, redirected into tmp_path.
+    script.TABLES_DIR = tmp_path
+    fresh = script.BUILDERS["sota"]()
+    assert (REPORT_DIR / "tables" / "sota_comparison.tex").read_bytes() == fresh.read_bytes()
