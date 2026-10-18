@@ -387,6 +387,106 @@ def build_sota_comparison(run_ids: list[str], out: Path) -> Path:
 def build_final_comparison(run_ids: list[str], out: Path) -> Path:
     """Three-way table for task 6: Model B against both SOTA models.
 
-    Accuracy, parameters, size, MACs and epoch time. Implemented by #25.
+    Accuracy, parameters, size, MACs and epoch time. Epoch budgets are shown
+    because the convergence-controlled Model B run trains longer than SOTA.
+    Global TeX macros keep the accompanying discussion's numbers tied to the
+    same artifacts, even when the fragment is input inside a table group.
     """
-    raise NotImplementedError("build_final_comparison is issue #25")
+    if len(run_ids) != 3 or len(set(run_ids)) != 3:
+        raise ValueError("final comparison requires exactly three distinct run_ids")
+
+    rows = {}
+    comparison_keys = []
+    for run_id in run_ids:
+        directory = RESULTS_DIR / run_id
+        errors = validate_run_dir(directory)
+        if errors:
+            raise ValueError(f"run {run_id!r} has invalid result artifacts: {'; '.join(errors)}")
+        config = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
+        metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+        profile = json.loads((directory / "profile.json").read_text(encoding="utf-8"))
+        selection = json.loads((directory / "selection.json").read_text(encoding="utf-8"))
+        if any(artifact["run_id"] != run_id for artifact in (config, metrics, profile)):
+            raise ValueError(f"run {run_id!r} contains an artifact with a different run_id")
+        if metrics["split"] != "test":
+            raise ValueError(f"run {run_id!r} must contain test metrics")
+        if config["training"]["smoke"] or config["training"]["epochs"] != selection["epochs_trained"]:
+            raise ValueError(f"run {run_id!r} has an invalid epoch budget or is a smoke run")
+        if config["data"]["input_size"] != 64 or profile["input_shape"] != [1, 3, 64, 64]:
+            raise ValueError(f"run {run_id!r} must use native 64x64 input")
+
+        model = config["model"]["name"]
+        if model not in {"model_b", *_SOTA_NAMES} or model in rows:
+            raise ValueError("final comparison requires Model B, MobileNetV2 and EfficientNet-B0 once each")
+        if config["model"]["freeze_backbone"] or profile["trainable_params"] != profile["total_params"]:
+            raise ValueError(f"run {run_id!r} must train all parameters")
+        if config["model"]["pretrained"] != (model != "model_b"):
+            raise ValueError(f"run {run_id!r} must use scratch Model B or pretrained SOTA")
+        if model == "model_b" and profile["total_params"] > 100_000:
+            raise ValueError("Model B exceeds the 100k parameter budget")
+        if any(profile[key] <= 0 for key in ("disk_size_bytes", "macs", "mean_epoch_seconds")):
+            raise ValueError(f"run {run_id!r} must have positive storage, MACs and epoch time")
+
+        # Learning rates and epoch budgets intentionally differ; the data and
+        # hardware must agree before training time can be compared.
+        comparison_keys.append((
+            config["seed"], config["data"]["manifest"], config["data"]["norm_stats"],
+            config["data"]["batch_size"], config["data"]["augment"],
+            config["data"]["num_workers"], profile["device_name"],
+            tuple(metrics["class_names"]), metrics["num_samples"],
+        ))
+        rows[model] = (config, metrics, profile, selection)
+    if len(set(comparison_keys)) != 1:
+        raise ValueError("final comparison rows must share data, seed, batch settings and device")
+
+    # Use measured bytes for every conversion and ratio: the stored KB/MB
+    # values are rounded, and KB elsewhere in this report means 1024 bytes.
+    b_config, b_metrics, b_profile, _ = rows["model_b"]
+    macros = {
+        "FinalBAccuracy": f"{100 * b_metrics['accuracy']:.2f}",
+        "FinalBSize": f"{b_profile['disk_size_bytes'] / 1024:.2f}",
+        "FinalBParams": _thousands(b_profile["total_params"]),
+        "FinalBEpochs": str(b_config["training"]["epochs"]),
+    }
+    for model, prefix in (("mobilenet_v2", "FinalMobile"), ("efficientnet_b0", "FinalEfficient")):
+        config, metrics, profile, _ = rows[model]
+        macros.update({
+            prefix + "Accuracy": f"{100 * metrics['accuracy']:.2f}",
+            prefix + "Gap": f"{100 * (metrics['accuracy'] - b_metrics['accuracy']):.2f}",
+            prefix + "StorageRatio": f"{profile['disk_size_bytes'] / b_profile['disk_size_bytes']:.1f}",
+            prefix + "MACRatio": f"{profile['macs'] / b_profile['macs']:.2f}",
+            # The recorded epoch times only the training pass, excluding
+            # validation, final testing, setup and ImageNet pretraining.
+            prefix + "TrainingRatio": (
+                f"{b_profile['mean_epoch_seconds'] * b_config['training']['epochs'] / (profile['mean_epoch_seconds'] * config['training']['epochs']):.2f}"
+            ),
+        })
+    mobile = rows["mobilenet_v2"]
+    efficient = rows["efficientnet_b0"]
+    macros["FinalSOTAGap"] = f"{100 * (efficient[1]['accuracy'] - mobile[1]['accuracy']):.2f}"
+    macros["FinalSOTAExtraCorrect"] = str(round(
+        (efficient[1]["accuracy"] - mobile[1]["accuracy"]) * mobile[1]["num_samples"]
+    ))
+
+    lines = [f"\\gdef\\{name}{{{value}}}%" for name, value in macros.items()]
+    lines += [
+        r"\begin{tabular}{lrrrrrr}",
+        r"\toprule",
+        r"Model & Epochs & \shortstack[r]{Accuracy\\(\%)} & Parameters & "
+        r"\shortstack[r]{Size\\(KiB)} & \shortstack[r]{MACs\\(M/image)} & "
+        r"\shortstack[r]{Epoch\\(s)} \\",
+        r"\midrule",
+    ]
+    for model in ("model_b", "mobilenet_v2", "efficientnet_b0"):
+        config, metrics, profile, selection = rows[model]
+        label = "Model B" if model == "model_b" else _SOTA_NAMES[model]
+        size_kib = f"{profile['disk_size_bytes'] / 1024:,.2f}".replace(",", "{,}")
+        lines.append(
+            f"{label} & {selection['epochs_trained']} & {100 * metrics['accuracy']:.2f} & "
+            f"{_thousands(profile['total_params'])} & {size_kib} & "
+            f"{profile['macs'] / 1_000_000:.3f} & {profile['mean_epoch_seconds']:.2f} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
