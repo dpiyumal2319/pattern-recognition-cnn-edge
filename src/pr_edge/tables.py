@@ -232,14 +232,96 @@ def build_optimizer_comparison(run_ids: list[str], out: Path) -> Path:
     return out
 
 
+# Report names for the torchvision backbones, keyed by config model.name.
+_SOTA_NAMES = {
+    "mobilenet_v2": "MobileNetV2",
+    "efficientnet_b0": "EfficientNet-B0",
+}
+
+# The resolution every primary result uses. Any other input size is the
+# supplementary resolution ablation and is grouped below the primary rows.
+_PRIMARY_INPUT_SIZE = 64
+
+
 def build_sota_comparison(run_ids: list[str], out: Path) -> Path:
     """Fine-tuned lightweight SOTA models.
 
     Sizes in MB here, not KB - the brief asks for MB for these, and the
     magnitude gap against the custom models is itself the point. Implemented
     by #22.
+
+    Columns: model, backbone policy (frozen or fine-tuned, CNNs.pdf p58),
+    input resolution, test accuracy, macro precision, macro recall, total and
+    trained parameter counts, and size in MB. Rows at the primary 64x64 input
+    come first in ``run_ids`` order. Rows at any other input size follow under
+    a labelled "Supplementary" rule, so the 224x224 ablation cannot be
+    mistaken for a primary result.
+
+    Model name, backbone policy and input size are read from each run's
+    resolved ``config.yaml`` - what the run actually did - never parsed out
+    of the run ID.
     """
-    raise NotImplementedError("build_sota_comparison is issue #22")
+    if not run_ids:
+        raise ValueError("build_sota_comparison requires at least one run_id")
+
+    primary, supplementary = [], []
+    for run_id in run_ids:
+        directory = RESULTS_DIR / run_id
+        required = ["config.yaml", "metrics.json", "profile.json"]
+        missing = [name for name in required if not (directory / name).is_file()]
+        if missing:
+            raise FileNotFoundError(f"run {run_id!r} is missing SOTA table artifact(s): {missing}")
+
+        config = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
+        metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+        profile = json.loads((directory / "profile.json").read_text(encoding="utf-8"))
+        errors = validate_metrics(metrics) + validate_profile(profile)
+        if errors:
+            raise ValueError(f"run {run_id!r} has invalid result artifacts: {'; '.join(errors)}")
+        if config["run_id"] != run_id or metrics["run_id"] != run_id or profile["run_id"] != run_id:
+            raise ValueError(f"run {run_id!r} contains an artifact with a different run_id")
+        # Every row must describe the held-out test split, never validation.
+        if metrics["split"] != "test":
+            raise ValueError(f"run {run_id!r} metrics are for split {metrics['split']!r}, not 'test'")
+
+        model_name = config["model"]["name"]
+        if model_name not in _SOTA_NAMES:
+            raise ValueError(f"run {run_id!r} is not a SOTA model: {model_name!r}")
+        backbone = "Frozen" if config["model"]["freeze_backbone"] else "Fine-tuned"
+        size = config["data"]["input_size"]
+
+        row = (
+            f"{_SOTA_NAMES[model_name]} & {backbone} & ${size}\\times{size}$ & "
+            f"{100 * metrics['accuracy']:.2f} & {100 * metrics['macro_precision']:.2f} & "
+            f"{100 * metrics['macro_recall']:.2f} & {_thousands(profile['total_params'])} & "
+            f"{_thousands(profile['trainable_params'])} & {profile['disk_size_mb']:.2f} \\\\"
+        )
+        (primary if size == _PRIMARY_INPUT_SIZE else supplementary).append(row)
+
+    # Nine columns do not fit the text width on one header line, so the
+    # numeric headers stack name over unit. \shortstack needs no package, and
+    # [r] matches the right-aligned numbers beneath it.
+    lines = [
+        r"\begin{tabular}{lllrrrrrr}",
+        r"\toprule",
+        r"Model & Backbone & Input & \shortstack[r]{Accuracy\\(\%)} & "
+        r"\shortstack[r]{Precision\\(\%)} & \shortstack[r]{Recall\\(\%)} & "
+        r"Parameters & Trained & \shortstack[r]{Size\\(MB)} \\",
+        r"\midrule",
+        *primary,
+    ]
+    if supplementary:
+        lines += [
+            r"\midrule",
+            r"\multicolumn{9}{l}{\textit{Supplementary: input resolution ablation}} \\",
+            *supplementary,
+        ]
+    lines += [r"\bottomrule", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Explicit "\n" so the generated file is byte-identical on every platform.
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
 
 
 def build_final_comparison(run_ids: list[str], out: Path) -> Path:

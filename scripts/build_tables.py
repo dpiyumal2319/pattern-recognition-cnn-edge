@@ -40,8 +40,22 @@ BUILDERS = {
     "optimizer": lambda: build_optimizer_comparison(
         ["model_b", "model_b_sgd", "model_b_sgdm"], TABLES_DIR / "optimizer_comparison.tex"
     ),
+    # Each network as a frozen / fine-tuned pair (CNNs.pdf p58); the fine-tuned
+    # run is the primary SOTA result (#22, #54). Each 224x224 pair differs from
+    # its 64x64 one only in input size and renders as a supplementary group;
+    # the batch-32 records *_224_ft are superseded by the batch-128 *_b128 runs.
     "sota": lambda: build_sota_comparison(
-        ["mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224"], TABLES_DIR / "sota_comparison.tex"
+        [
+            "mobilenetv2_64",
+            "mobilenetv2_64_ft",
+            "efficientnetb0_64",
+            "efficientnetb0_64_ft",
+            "mobilenetv2_224",
+            "mobilenetv2_224_ft_b128",
+            "efficientnetb0_224",
+            "efficientnetb0_224_ft_b128",
+        ],
+        TABLES_DIR / "sota_comparison.tex",
     ),
     "final": lambda: build_final_comparison(
         ["model_b", "mobilenetv2_64", "efficientnetb0_64"], TABLES_DIR / "final_comparison.tex"
