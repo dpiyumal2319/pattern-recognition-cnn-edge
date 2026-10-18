@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 from .paths import RESULTS_DIR
-from .schemas import validate_metrics, validate_profile
+from .schemas import validate_metrics, validate_profile, validate_run_dir
 
 
 # Keras-style layer names, as in the model.summary() table on CNNs.pdf p54, so
@@ -184,6 +184,66 @@ def build_custom_comparison(run_ids: list[str], out: Path) -> Path:
             f"{label} & {_thousands(profile['total_params'])} & {size_kb} & "
             f"{profile['mean_epoch_seconds']:.2f} & {100 * metrics['accuracy']:.2f} & "
             f"{100 * metrics['macro_precision']:.2f} & {100 * metrics['macro_recall']:.2f} \\\\"
+        )
+    lines += [r"\hline", r"\end{tabular}"]
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    return out
+
+
+def build_custom_convergence(run_ids: list[str], out: Path) -> Path:
+    """Controlled 30-vs-100 epoch comparison for Models A and B.
+
+    Selection fields come from the lowest-validation-loss checkpoint, while
+    test metrics and resource measurements come from the matching run
+    artifacts.  All rows must share a device because epoch time is otherwise
+    not comparable.
+    """
+    if not run_ids:
+        raise ValueError("build_custom_convergence requires at least one run_id")
+
+    rows: list[tuple[str, dict, dict, dict, dict]] = []
+    devices: set[str] = set()
+    for run_id in run_ids:
+        directory = RESULTS_DIR / run_id
+        errors = validate_run_dir(directory)
+        if errors:
+            raise ValueError(f"run {run_id!r} has invalid result artifacts: {'; '.join(errors)}")
+
+        config = yaml.safe_load((directory / "config.yaml").read_text(encoding="utf-8"))
+        metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+        profile = json.loads((directory / "profile.json").read_text(encoding="utf-8"))
+        selection = json.loads((directory / "selection.json").read_text(encoding="utf-8"))
+        if any(artifact["run_id"] != run_id for artifact in (config, metrics, profile)):
+            raise ValueError(f"run {run_id!r} contains an artifact with a different run_id")
+        if config["training"]["epochs"] != selection["epochs_trained"]:
+            raise ValueError(f"run {run_id!r} config and selection disagree on the epoch budget")
+        devices.add(profile["device_name"])
+        rows.append((run_id, config, metrics, profile, selection))
+
+    if len(devices) != 1:
+        raise ValueError(f"custom convergence rows must share one device, found: {sorted(devices)}")
+
+    lines = [
+        r"\begin{tabular}{lrrrrrrrrr}",
+        r"\hline",
+        (
+            r"Model & Epochs & Selected & Best val. loss & Best val. acc. (\%) & "
+            r"Test acc. (\%) & Parameters & Size (KB) & MACs & Epoch (s) \\"
+        ),
+        r"\hline",
+    ]
+    for _, config, metrics, profile, selection in rows:
+        model = {"model_a": "Model A", "model_b": "Model B"}.get(
+            config["model"]["name"], config["model"]["name"].replace("_", " ").title()
+        )
+        size_kb = f"{profile['disk_size_kb']:,.2f}".replace(",", "{,}")
+        lines.append(
+            f"{model} & {selection['epochs_trained']} & {selection['best_epoch']} & "
+            f"{selection['best_val_loss']:.4f} & {100 * selection['best_val_acc']:.2f} & "
+            f"{100 * metrics['accuracy']:.2f} & {_thousands(profile['total_params'])} & "
+            f"{size_kb} & {_thousands(profile['macs'])} & {profile['mean_epoch_seconds']:.2f} \\\\"
         )
     lines += [r"\hline", r"\end{tabular}"]
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 import yaml
 
@@ -14,7 +16,8 @@ ALL_CONFIGS = sorted(CONFIGS_DIR.glob("*.yaml"))
 def test_configs_exist_for_every_run_id():
     """Every fixed run ID (AGENTS.md section 3) plus base must have a config file."""
     expected = {
-        "base", "model_a", "model_b", "model_b_sgd", "model_b_sgdm",
+        "base", "model_a", "model_a_100", "model_b", "model_b_100",
+        "model_b_sgd", "model_b_sgdm",
         "mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224",
         "mobilenetv2_64_ft", "mobilenetv2_224_ft",  # #54: unfrozen-backbone partners
         "mobilenetv2_224_ft_b128",  # #53: batch-128 rerun of mobilenetv2_224_ft
@@ -29,6 +32,20 @@ def test_every_shipped_config_loads(path):
     cfg = load_config(path)
     assert isinstance(cfg, Config)
     assert cfg.run_id == path.stem
+
+
+@pytest.mark.parametrize("model", ["model_a", "model_b"])
+def test_100_epoch_control_changes_only_run_id_and_epoch_budget(model):
+    short = load_config(CONFIGS_DIR / f"{model}.yaml")
+    long = load_config(CONFIGS_DIR / f"{model}_100.yaml")
+    assert long.run_id == f"{model}_100"
+    assert long.training.epochs == 100
+    normalized = replace(
+        long,
+        run_id=short.run_id,
+        training=replace(long.training, epochs=short.training.epochs),
+    )
+    assert normalized == short
 
 
 def test_unknown_key_raises(tmp_path):

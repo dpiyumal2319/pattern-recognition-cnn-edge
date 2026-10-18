@@ -159,6 +159,27 @@ def test_committed_results_validate(path):
     assert errors == [], "\n".join(errors)
 
 
+@pytest.mark.parametrize("run_id", ["model_a_100", "model_b_100"])
+def test_committed_convergence_run_directory_is_consistent(run_id):
+    """Selection must agree with the 100-record history, not only its schema."""
+    errors = validate_run_dir(RESULTS_DIR / run_id)
+    assert errors == [], "\n".join(errors)
+
+
+@pytest.mark.parametrize("short_id,long_id", [
+    ("model_a", "model_a_100"),
+    ("model_b", "model_b_100"),
+])
+def test_convergence_run_reproduces_the_original_first_30_epochs(short_id, long_id):
+    """The 2x2 control changes the epoch budget, not the first 30 updates."""
+    short = json.loads((RESULTS_DIR / short_id / "history.json").read_text(encoding="utf-8"))
+    long = json.loads((RESULTS_DIR / long_id / "history.json").read_text(encoding="utf-8"))
+    fields = ("epoch", "train_loss", "train_acc", "val_loss", "val_acc", "lr")
+    assert [tuple(row[field] for field in fields) for row in short] == [
+        tuple(row[field] for field in fields) for row in long[:30]
+    ]
+
+
 def test_json_syntax_error_is_reported(tmp_path):
     path = tmp_path / "metrics.json"
     path.write_text("{not json", encoding="utf-8")

@@ -37,6 +37,49 @@ and River than Figure~\ref{fig:model-a-confusion}.  In contrast, both models
 remain strong on classes with more distinctive appearance, including Forest,
 Residential, and Sea/Lake.
 
+\subsubsection{Convergence control}
+
+The 30-epoch comparison controls the early training budget, but its loss curve
+shows that Model~B had not converged.  To separate convergence speed from
+architecture capability, both models were therefore repeated for 100 epochs
+with otherwise identical configurations.  The first 30 loss and accuracy
+records reproduce the original runs exactly (apart from wall-clock noise), so
+this is a controlled extension rather than a new hyperparameter search.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/custom_convergence.png}
+  \caption{One-hundred-epoch training and validation loss for both custom
+  models.  The dashed line marks the original 30-epoch stopping point.}
+  \label{fig:custom-convergence}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \scriptsize
+  \resizebox{\linewidth}{!}{\input{tables/custom_convergence.tex}}
+  \caption{Controlled custom-model convergence comparison.  ``Selected'' is
+  the lowest-validation-loss checkpoint; all timings were measured on the
+  same Tesla T4.}
+  \label{tab:custom-convergence}
+\end{table}
+
+Table~\ref{tab:custom-convergence} shows that longer training benefits
+Model~B much more strongly, substantially narrowing the accuracy gap without
+changing its parameter, storage, or MAC advantage.  The two tables answer
+different questions: Table~\ref{tab:custom-comparison} measures performance
+under the same early epoch budget, whereas Table~\ref{tab:custom-convergence}
+measures the architectures after a longer equal budget.  The former must not
+be presented as Model~B's converged capability.
+
+Model~A shows mild late-stage overfitting: its training loss continues to
+fall while validation loss plateaus and fluctuates.  Selecting the
+lowest-validation-loss checkpoint at epoch 98 mitigates that deterioration,
+and the matching validation and test accuracies support good generalisation
+of the selected checkpoint.  Model~B selects the final epoch, so even the
+100-epoch result should be described as the achieved result, not a proven
+upper limit on the architecture.
+
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.82\linewidth]{figures/model_a_confusion_matrix.png}

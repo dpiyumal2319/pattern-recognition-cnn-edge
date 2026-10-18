@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from pr_edge.paths import CONFIGS_DIR, DATA_DIR, REPORT_DIR  # noqa: E402
 from pr_edge.tables import (  # noqa: E402
     build_custom_comparison,
+    build_custom_convergence,
     build_dataset_table,
     build_final_comparison,
     build_layer_table,
@@ -37,6 +38,10 @@ BUILDERS = {
     "model_b_layers": lambda: build_layer_table(CONFIGS_DIR / "model_b.yaml", TABLES_DIR / "model_b_layers.tex"),
     "dataset": lambda: build_dataset_table(DATA_DIR / "splits.csv", TABLES_DIR / "dataset.tex"),
     "custom": lambda: build_custom_comparison(["model_a", "model_b"], TABLES_DIR / "custom_comparison.tex"),
+    "custom_convergence": lambda: build_custom_convergence(
+        ["model_a", "model_a_100", "model_b", "model_b_100"],
+        TABLES_DIR / "custom_convergence.tex",
+    ),
     "optimizer": lambda: build_optimizer_comparison(
         ["model_b", "model_b_sgd", "model_b_sgdm"], TABLES_DIR / "optimizer_comparison.tex"
     ),

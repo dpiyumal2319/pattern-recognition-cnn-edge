@@ -77,6 +77,29 @@ def test_loss_curves_use_one_shared_y_axis_per_model(tmp_path, monkeypatch):
     assert [line.get_label() for line in axes[0].lines] == ["Training", "Validation"]
 
 
+def test_loss_curves_can_mark_the_original_stop_epoch(tmp_path, monkeypatch):
+    results = tmp_path / "results"
+    _write_history(results, "model_a_100", [(2.0, 2.2), (1.0, 1.2)])
+    monkeypatch.setattr(plots, "RESULTS_DIR", results)
+
+    captured = {}
+    real_subplots = plots.plt.subplots
+
+    def recording_subplots(*args, **kwargs):
+        created = real_subplots(*args, **kwargs)
+        captured["axes"] = created[1]
+        return created
+
+    monkeypatch.setattr(plots.plt, "subplots", recording_subplots)
+    plots.plot_loss_curves(
+        ["model_a_100"], tmp_path / "marked.png", reference_epoch=30
+    )
+
+    marker = captured["axes"][0][0].lines[2]
+    assert marker.get_label() == "Original stop (30)"
+    assert list(marker.get_xdata()) == [30, 30]
+
+
 def test_confusion_matrix_uses_true_row_proportions_and_count_annotations(tmp_path, monkeypatch):
     results = tmp_path / "results"
     _write_metrics(results, "model_a", [[3, 1], [2, 2]])
@@ -134,6 +157,7 @@ def test_committed_figures_are_report_resolution():
     figures = plots.RESULTS_DIR.parent / "report" / "figures"
     for name in (
         "custom_loss_curves.png",
+        "custom_convergence.png",
         "model_a_confusion_matrix.png",
         "model_b_confusion_matrix.png",
         "mobilenetv2_64_ft_confusion_matrix.png",
