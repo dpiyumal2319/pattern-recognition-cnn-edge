@@ -1,0 +1,30 @@
+run_id: efficientnetb0_224_ft
+seed: 42
+device: auto
+data:
+  root: data/
+  manifest: data/splits.csv
+  input_size: 224
+  batch_size: 32
+  num_workers: 2
+  augment: true
+  norm_stats: data/norm_stats.json
+model:
+  name: efficientnet_b0
+  num_classes: 10
+  channels: []
+  fc_units:
+  - 128
+  - 64
+  head: gap
+  dropout: 0.2
+  pretrained: true
+  freeze_backbone: false
+optimizer:
+  name: adam
+  lr: 0.0001
+  momentum: 0.0
+  weight_decay: 0.0
+training:
+  epochs: 30
+  smoke: false

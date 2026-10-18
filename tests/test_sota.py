@@ -198,6 +198,10 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
         "mobilenetv2_64_ft.yaml": ("mobilenet_v2", 64),
         "mobilenetv2_224_ft.yaml": ("mobilenet_v2", 224),
         "mobilenetv2_224_ft_b128.yaml": ("mobilenet_v2", 224),
+        "efficientnetb0_64_ft.yaml": ("efficientnet_b0", 64),
+        "efficientnetb0_224.yaml": ("efficientnet_b0", 224),
+        "efficientnetb0_224_ft.yaml": ("efficientnet_b0", 224),
+        "efficientnetb0_224_ft_b128.yaml": ("efficientnet_b0", 224),
     }
     for filename, (name, size) in expected.items():
         cfg = load_config(CONFIGS_DIR / filename)
@@ -209,6 +213,8 @@ def test_all_sota_configs_reuse_manifest_and_resolution_policy():
 @pytest.mark.parametrize("frozen,fine_tuned", [
     ("mobilenetv2_64", "mobilenetv2_64_ft"),
     ("mobilenetv2_224", "mobilenetv2_224_ft_b128"),
+    ("efficientnetb0_64", "efficientnetb0_64_ft"),
+    ("efficientnetb0_224", "efficientnetb0_224_ft_b128"),
 ])
 def test_fine_tune_config_differs_from_frozen_partner_only_in_policy(frozen, fine_tuned):
     """The _ft run is the 'fine-tune' half of CNNs.pdf p58's 'keep frozen or
@@ -233,6 +239,8 @@ def test_fine_tune_config_differs_from_frozen_partner_only_in_policy(frozen, fin
 @pytest.mark.parametrize("low,high", [
     ("mobilenetv2_64", "mobilenetv2_224"),
     ("mobilenetv2_64_ft", "mobilenetv2_224_ft_b128"),
+    ("efficientnetb0_64", "efficientnetb0_224"),
+    ("efficientnetb0_64_ft", "efficientnetb0_224_ft_b128"),
 ])
 def test_resolution_ablation_differs_only_in_input_size(low, high):
     """64 vs 224 must isolate resolution. An earlier 224 run used batch 32
