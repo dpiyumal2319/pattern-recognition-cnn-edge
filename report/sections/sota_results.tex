@@ -23,10 +23,10 @@ network was run both ways, so the choice is measured rather than assumed.
   a learning rate of $10^{-3}$. The backbone acts as a fixed feature extractor,
   and its batch-normalisation statistics are held at their ImageNet values.
   \item \textbf{Fine-tuned.} Every weight is trained, starting from the same
-  ImageNet weights, with Adam at a learning rate of $10^{-4}$. The smaller rate
-  keeps the pretrained filters from being destroyed by the large, random
-  gradients of the untrained head in the first epochs. This is the rate used
-  in the Keras EfficientNet fine-tuning example that the brief cites.
+  ImageNet weights, with Adam at a learning rate of $10^{-4}$. We chose a rate
+  below the frozen-head rate to limit changes to the pretrained filters while
+  the new head learns. This is a project choice; the Keras EfficientNet
+  fine-tuning example cited by the brief uses $10^{-5}$.
 \end{itemize}
 
 The primary runs keep the input at $64\times64$, the resolution the custom
@@ -77,10 +77,12 @@ EfficientNet-B0 is clearly the weaker network, despite having almost twice
 MobileNetV2's parameters. Fine-tuned, the two are practically level. The
 frozen gap therefore says how well each network's ImageNet features happen to
 transfer to $64\times64$ overhead images, not how much each network can learn.
-EfficientNet-B0's compound scaling assumes $224\times224$ input, and at
-$64\times64$ its downsampling stages leave a $2\times2$ final feature map; its
-fixed features suffer more from the small input than MobileNetV2's do. Once
-fine-tuned, however, EfficientNet-B0 offers no meaningful accuracy over
+At $64\times64$, both networks' downsampling stages leave a $2\times2$ final
+feature map. Reduced spatial detail may limit frozen-feature transfer, but
+this shared reduction alone does not explain EfficientNet-B0's larger
+accuracy deficit. Different sensitivity of the pretrained features to input
+scale is a possible explanation; these runs do not establish that mechanism.
+Once fine-tuned, however, EfficientNet-B0 offers no meaningful accuracy over
 MobileNetV2 for nearly twice the memory. MobileNetV2 is the better edge
 candidate of the two.
 
