@@ -1,0 +1,16 @@
+\begin{tabular}{lllrrrrrr}
+\toprule
+Model & Backbone & Input & \shortstack[r]{Accuracy\\(\%)} & \shortstack[r]{Precision\\(\%)} & \shortstack[r]{Recall\\(\%)} & Parameters & Trained & \shortstack[r]{Size\\(MB)} \\
+\midrule
+MobileNetV2 & Frozen & $64\times64$ & 93.04 & 92.80 & 92.90 & 2{,}236{,}682 & 12{,}810 & 8.77 \\
+MobileNetV2 & Fine-tuned & $64\times64$ & 98.02 & 97.92 & 97.94 & 2{,}236{,}682 & 2{,}236{,}682 & 8.77 \\
+EfficientNet-B0 & Frozen & $64\times64$ & 87.33 & 87.02 & 86.97 & 4{,}020{,}358 & 12{,}810 & 15.63 \\
+EfficientNet-B0 & Fine-tuned & $64\times64$ & 98.10 & 98.04 & 97.99 & 4{,}020{,}358 & 4{,}020{,}358 & 15.63 \\
+\midrule
+\multicolumn{9}{l}{\textit{Supplementary: input resolution ablation}} \\
+MobileNetV2 & Frozen & $224\times224$ & 96.15 & 95.99 & 95.99 & 2{,}236{,}682 & 12{,}810 & 8.77 \\
+MobileNetV2 & Fine-tuned & $224\times224$ & 98.84 & 98.80 & 98.81 & 2{,}236{,}682 & 2{,}236{,}682 & 8.77 \\
+EfficientNet-B0 & Frozen & $224\times224$ & 92.05 & 91.94 & 91.72 & 4{,}020{,}358 & 12{,}810 & 15.63 \\
+EfficientNet-B0 & Fine-tuned & $224\times224$ & 99.04 & 99.04 & 98.97 & 4{,}020{,}358 & 4{,}020{,}358 & 15.63 \\
+\bottomrule
+\end{tabular}
