@@ -378,3 +378,16 @@ def test_sota_cli_pairs_each_network_frozen_and_fine_tuned(monkeypatch):
         "efficientnetb0_224", "efficientnetb0_224_ft_b128",
     ]
     assert out == REPORT_DIR / "tables" / "sota_comparison.tex"
+
+
+def test_committed_sota_table_is_current(tmp_path):
+    """If this fails, a SOTA run changed without rerunning build_tables.py --table sota."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_tables", REPORT_DIR.parent / "scripts" / "build_tables.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    # Build through the CLI's own run list, redirected into tmp_path.
+    script.TABLES_DIR = tmp_path
+    fresh = script.BUILDERS["sota"]()
+    assert (REPORT_DIR / "tables" / "sota_comparison.tex").read_bytes() == fresh.read_bytes()
