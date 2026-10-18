@@ -430,7 +430,8 @@ def build_final_comparison(run_ids: list[str], out: Path) -> Path:
         # Learning rates and epoch budgets intentionally differ; the data and
         # hardware must agree before training time can be compared.
         comparison_keys.append((
-            config["seed"], config["data"]["manifest"], config["data"]["norm_stats"],
+            config["seed"], config["data"]["root"],
+            config["data"]["manifest"], config["data"]["norm_stats"],
             config["data"]["batch_size"], config["data"]["augment"],
             config["data"]["num_workers"], profile["device_name"],
             tuple(metrics["class_names"]), metrics["num_samples"],
@@ -441,12 +442,13 @@ def build_final_comparison(run_ids: list[str], out: Path) -> Path:
 
     # Use measured bytes for every conversion and ratio: the stored KB/MB
     # values are rounded, and KB elsewhere in this report means 1024 bytes.
-    b_config, b_metrics, b_profile, _ = rows["model_b"]
+    b_config, b_metrics, b_profile, b_selection = rows["model_b"]
     macros = {
         "FinalBAccuracy": f"{100 * b_metrics['accuracy']:.2f}",
         "FinalBSize": f"{b_profile['disk_size_bytes'] / 1024:.2f}",
         "FinalBParams": _thousands(b_profile["total_params"]),
         "FinalBEpochs": str(b_config["training"]["epochs"]),
+        "FinalBSelectedEpoch": str(b_selection["best_epoch"]),
     }
     for model, prefix in (("mobilenet_v2", "FinalMobile"), ("efficientnet_b0", "FinalEfficient")):
         config, metrics, profile, _ = rows[model]

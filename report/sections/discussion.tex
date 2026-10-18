@@ -36,9 +36,10 @@ MobileNetV2 and EfficientNet-B0 reach \FinalMobileAccuracy\% and
 \FinalEfficientAccuracy\%, respectively: gains of \FinalMobileGap{} and
 \FinalEfficientGap{} percentage points over Model~B. This accuracy advantage
 survives the longer custom-model training budget, although its size is much
-smaller than the early comparison would suggest. Model~B still selects the
-last epoch of its \FinalBEpochs{}-epoch run, so the observed gap is not proof
-of an irreducible capacity limit. Conversely, its lower per-epoch time does
+smaller than the early comparison would suggest. Model~B's selected checkpoint
+is epoch \FinalBSelectedEpoch{} within a \FinalBEpochs{}-epoch budget. This
+achieved result does not prove an irreducible capacity limit.
+Conversely, its lower per-epoch time does
 not make it cheaper to train to this result: multiplying the recorded mean
 epoch time by the run budget gives \FinalMobileTrainingRatio{} times the
 MobileNetV2 epoch-time total and \FinalEfficientTrainingRatio{} times the

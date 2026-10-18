@@ -483,6 +483,26 @@ def test_final_values_update_from_artifacts_and_bytes(final_results, tmp_path):
     assert "200.00 & 1.000" in text
 
 
+def test_final_discussion_uses_the_selected_epoch_even_when_it_is_not_last(final_results, tmp_path):
+    directory = final_results / "model_b_100"
+    history_path = directory / "history.json"
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+    # Make epoch 1 the validation-loss winner without changing the run budget.
+    history[0]["val_loss"] = min(row["val_loss"] for row in history) / 2
+    history_path.write_text(json.dumps(history), encoding="utf-8")
+    selection_path = directory / "selection.json"
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    selection.update(best_epoch=1, best_val_loss=history[0]["val_loss"], best_val_acc=history[0]["val_acc"])
+    selection_path.write_text(json.dumps(selection), encoding="utf-8")
+
+    text = build_final_comparison(FINAL_RUNS, tmp_path / "final.tex").read_text(encoding="utf-8")
+    assert r"\gdef\FinalBSelectedEpoch{1}" in text
+    assert r"\gdef\FinalBEpochs{100}" in text
+    discussion = (REPORT_DIR / "sections" / "discussion.tex").read_text(encoding="utf-8")
+    assert r"\FinalBSelectedEpoch{}" in discussion
+    assert "last epoch" not in discussion
+
+
 @pytest.mark.parametrize("filename,keys,value,message", [
     ("metrics.json", ["split"], "val", "test metrics"),
     ("metrics.json", ["run_id"], "wrong", "different run_id"),
@@ -494,6 +514,7 @@ def test_final_values_update_from_artifacts_and_bytes(final_results, tmp_path):
     ("profile.json", ["trainable_params"], 12810, "train all parameters"),
     ("config.yaml", ["data", "input_size"], 224, "native 64x64"),
     ("config.yaml", ["data", "batch_size"], 32, "must share"),
+    ("config.yaml", ["data", "root"], "different-image-tree/", "must share"),
     ("config.yaml", ["seed"], 123, "must share"),
     ("config.yaml", ["training", "epochs"], 20, "epoch budget"),
     ("config.yaml", ["training", "smoke"], True, "smoke run"),
