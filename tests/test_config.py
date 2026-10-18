@@ -18,6 +18,8 @@ def test_configs_exist_for_every_run_id():
         "mobilenetv2_64", "efficientnetb0_64", "mobilenetv2_224",
         "mobilenetv2_64_ft", "mobilenetv2_224_ft",  # #54: unfrozen-backbone partners
         "mobilenetv2_224_ft_b128",  # #53: batch-128 rerun of mobilenetv2_224_ft
+        "efficientnetb0_64_ft", "efficientnetb0_224",  # #21: EfficientNet-B0 partners
+        "efficientnetb0_224_ft", "efficientnetb0_224_ft_b128",
     }
     assert {p.stem for p in ALL_CONFIGS} == expected
 
