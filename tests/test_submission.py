@@ -53,6 +53,18 @@ def test_committed_notebooks_match_generator(tmp_path):
         assert generated.read_bytes() == committed.read_bytes()
 
 
+def test_sota_notebook_exposes_report_cited_diagnostic_without_rerunning_it(tmp_path):
+    paths = submission.generate_notebooks(destination=tmp_path)
+    notebook = json.loads(next(path for path in paths if path.name.startswith("04_")).read_text(encoding="utf-8"))
+    code = "\n".join("".join(cell["source"]) for cell in notebook["cells"]
+                     if cell["cell_type"] == "code")
+    assert "%%writefile scripts/diagnose_frozen_head.py" in code
+    assert 'Path("results/frozen_head_diagnostic/diagnostic.json").read_text()' in code
+    assert 'head["val_loss_sd_mean"]' in code
+    assert "RUN_DIAGNOSTIC = False" in code
+    assert "results/rerun_frozen_head_diagnostic/diagnostic.json" in code
+
+
 @pytest.mark.parametrize("relative", ["", "raw_code", "raw_code/src", "notebooks/submission"])
 def test_setup_finds_source_from_extracted_or_repository_layout(tmp_path, monkeypatch, relative):
     # Both the extracted archive layout and Git checkout layout are supported.

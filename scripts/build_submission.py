@@ -112,7 +112,7 @@ if RUN_FULL_TRAINING:
      "full experiments after notebook 01 prepares the images. Existing results "
      "under results/ are the report's recorded runs, not new notebook execution outputs."),
     ("04_pretrained_models", "MobileNetV2 and EfficientNet-B0", "Task 5",
-     ["src/pr_edge/models/sota.py"],
+     ["src/pr_edge/models/sota.py", "scripts/diagnose_frozen_head.py"],
      '''import json
 
 names = ("mobilenetv2_64", "mobilenetv2_64_ft",
@@ -123,6 +123,16 @@ for name in names:
     metrics = json.loads((PROJECT / "results" / name / "metrics.json").read_text())
     print(name, "recorded accuracy:", metrics["accuracy"])
 
+# Section 5 also cites this supplementary fixed-feature diagnostic.
+# Inspect the recorded three-seed summaries without recomputing features.
+diagnostic = json.loads(Path("results/frozen_head_diagnostic/diagnostic.json").read_text())
+print("Diagnostic protocol:", diagnostic["protocol"])
+for name, result in diagnostic["runs"].items():
+    print(name, "recorded feature statistics:", result["features"])
+    for head in result["heads"]:
+        print("lr:", head["lr"], "standardised:", head["standardised"],
+              "mean validation-loss SD:", head["val_loss_sd_mean"])
+
 # Requires the data from notebook 01 and internet for ImageNet weights.
 # Each config reproduces its independent initialization and training policy.
 RUN_FULL_TRAINING = False
@@ -130,11 +140,20 @@ if RUN_FULL_TRAINING:
     for name in names:
         run_script("scripts/run_experiment.py", "--config", f"configs/{name}.yaml",
                    "--device", "auto", "--run-id", f"rerun_{name}")
+
+# Optional diagnostic rerun: fixed, unaugmented features and head-only training.
+# This differs from the main protocol and does not isolate activation causality.
+RUN_DIAGNOSTIC = False
+if RUN_DIAGNOSTIC:
+    run_script("scripts/diagnose_frozen_head.py", "--device", "auto",
+               "--out", "results/rerun_frozen_head_diagnostic/diagnostic.json")
 ''',
      "Primary comparisons use 64 x 64; 224 x 224 runs are supplementary. Frozen "
      "and fine-tuned policies are defined by their YAML configs. Saved weights "
      "and the EuroSAT images are excluded from the submission. Full GPU runs "
-     "are optional and are not executed by default."),
+     "are optional and are not executed by default. The supplementary diagnostic "
+     "source and recorded feature/head summaries support Section 5's discussion; "
+     "its separate rerun is also opt-in."),
     ("05_evaluation_and_report", "Evaluation, profiling and report artifacts", "Tasks 4 and 6",
      ["src/pr_edge/evaluate.py", "src/pr_edge/profile.py", "src/pr_edge/schemas.py",
       "src/pr_edge/plots.py", "src/pr_edge/tables.py", "scripts/build_tables.py",
@@ -259,8 +278,8 @@ network, and does not reproduce the report's accuracies.
 
 raw_code/ includes the Python package, CLI scripts, tests, YAML configs,
 recorded JSON/figures, split manifest, normalization statistics and LaTeX
-report sources. The optional frozen-head diagnostic is in the raw scripts;
-it is not required by the five assignment notebooks.
+report sources. Notebook 04 also includes the frozen-head diagnostic cited
+in Section 5, inspects its recorded summaries, and offers an opt-in rerun.
 
 No dataset images, pretrained downloads, checkpoints, environment, Git history,
 AGENTS.md or CLAUDE.md are included. EuroSAT and ImageNet weights download only
