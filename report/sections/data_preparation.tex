@@ -9,8 +9,8 @@ Each RGB channel is standardised,
   x' = \frac{x - \mu_c}{\sigma_c},
   \label{eq:standardisation}
 \end{equation}
-the zero-mean, unit-variance feature scaling of \emph{Learning from data},
-p.~18. Pixels are first scaled to $[0,1]$; $\mu_c$ and $\sigma_c$ are the
+giving zero-mean, unit-variance feature scaling. Pixels are first scaled to
+$[0,1]$; $\mu_c$ and $\sigma_c$ are the
 per-channel mean and population standard deviation. Without this step the
 three channels enter the first convolution with different offsets and spreads,
 so the gradient scale differs per channel and a single learning rate suits none
@@ -21,9 +21,8 @@ so that every model in the comparison sees identically preprocessed images and
 the standardisation reflects the satellite data actually being classified.
 
 \paragraph{Statistics from the training set only.}
-The course pipeline (\emph{Learning from data}, p.~29) places data preparation
-before splitting. For a statistic that is \emph{estimated from the data}, that
-order would leak information: if $\mu_c$ and $\sigma_c$ were computed over all
+Estimating preprocessing statistics before splitting would leak information:
+if $\mu_c$ and $\sigma_c$ were computed over all
 27,000 images, the preprocessing applied to the test set would already reflect
 the test images, and the test score would no longer be a fair estimate of
 performance on unseen data. We therefore fix the split first and estimate
@@ -34,9 +33,8 @@ The statistics are computed once and cached, so every experiment normalises
 identically.
 
 \paragraph{Augmentation.}
-\emph{Learning from data}, p.~17, introduces augmentation as artificially
-expanding the size and diversity of a dataset, with rotation and flipping as
-examples. During training only, each image independently receives a horizontal
+Augmentation artificially expands the size and diversity of a dataset through
+transformations such as rotation and flipping. During training only, each image independently receives a horizontal
 flip and a vertical flip, each with probability 0.5, and a rotation by a
 uniformly chosen multiple of $90^\circ$. Together these produce all eight
 orientations of the square image, freshly sampled every epoch
@@ -63,8 +61,8 @@ another's.
 Validation and test images are only converted to tensors and standardised with
 the training statistics, so every evaluation is deterministic. The classes are
 mildly imbalanced (2,000 to 3,000 images; Table~\ref{tab:dataset-split}).
-\emph{Learning from data}, p.~17, lists under-sampling and synthetic minority
-samples as remedies, but at a ratio of 1.5:1 neither was needed: stratification
+Under-sampling and synthetic minority samples are possible remedies, but at a
+ratio of 1.5:1 neither was needed: stratification
 keeps the imbalance identical across the three sets, and the evaluation reports
 macro-averaged precision and recall alongside accuracy, so the smaller classes
 are not hidden by the larger ones.

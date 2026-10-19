@@ -3,10 +3,8 @@
 
 Models A and B use the rectified linear unit (ReLU),
 $f(x)=\max(0,x)$, after every convolutional stage and hidden fully connected
-layer.  This follows the course treatment in \emph{DNNs.pdf}: p.~97 describes
-ReLU as computationally efficient ``thresholding'' and notes that it does not
-saturate for positive inputs, while p.~98 recommends it for most cases.  The
-same slide also identifies its limitations---negative units have zero gradient
+layer.  ReLU provides computationally efficient thresholding and does not
+saturate for positive inputs.  Its limitations are that negative units have zero gradient
 and can become ``dying ReLUs'', and the output is not zero-centred.  These are
 training risks, but neither changes the inference operation: compare with zero
 and retain either zero or the input value.
@@ -33,8 +31,7 @@ Their definitions,
   \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
   \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
 \end{equation}
-require exponential evaluation or an approximation.  \emph{DNNs.pdf}
-pp.~95--96 also shows that both saturate, producing near-zero gradients at the
+require exponential evaluation or an approximation.  Both saturate, producing near-zero gradients at the
 extremes.  A representative embedded alternative illustrates the memory--time
 trade-off: CMSIS-NN implements 16-bit sigmoid and tanh by two reads from a
 256-entry \texttt{uint16\_t} sigmoid table plus integer interpolation for each
@@ -66,8 +63,8 @@ distribution (equivalently an error function), while its common approximation
 uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
 K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
 \url{https://arxiv.org/abs/1606.08415}.}
-Leaky ReLU and PReLU are computationally efficient alternatives discussed on
-p.~99 of \emph{DNNs.pdf} and avoid dead neurons, but they require a multiply on
+Leaky ReLU and PReLU are computationally efficient alternatives that
+avoid dead neurons, but they require a multiply on
 the negative branch; PReLU additionally stores and learns the slope $\alpha$.
 Without evidence that dying ReLUs impair these models, those extra operations
 and parameters are not justified.
@@ -87,14 +84,13 @@ assignment makes the edge argument analytically and explicitly excludes
 quantisation.  The custom models are trained and evaluated in floating point,
 so imposing an upper saturation at six would discard positive magnitude
 without delivering a required int8 benefit.  Ordinary ReLU therefore matches
-both the lecture recommendation and the present deployment scope; ReLU6 is a
+the present deployment scope; ReLU6 is a
 future quantised-deployment option rather than the chosen activation.
 
 \subsubsection{The softmax exception}
 
 The ten-class output is the one place where exponentials are justified when
-normalised probabilities are required.  As shown in \emph{Classification
-2.pdf}, pp.~4--5,
+normalised probabilities are required:
 \begin{equation}
   p(y=C_k\mid x)=\frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}.
 \end{equation}

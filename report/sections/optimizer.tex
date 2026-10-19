@@ -8,12 +8,11 @@ Only the optimizer block changes; the model, split manifest, random seed, data
 order, batch size, augmentation, epoch budget, and execution device are held
 constant.  This isolation is checked programmatically before training begins.
 
-The choices follow the course treatment in \emph{DNNs.pdf}.  Page~101 gives
-the SGD update
+The SGD update is
 \begin{equation}
   w \leftarrow w-\alpha\frac{\partial L(w)}{\partial w},
 \end{equation}
-while p.~103 adds a velocity term,
+while momentum adds a velocity term,
 \begin{equation}
   v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
   \qquad w \leftarrow w+v.
@@ -21,7 +20,7 @@ while p.~103 adds a velocity term,
 The momentum value $0.9$ is therefore compared against $m=0$ without changing
 SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
 rate rather than forcing all optimizers to share a numerically equal step
-size: p.~108 emphasises that Adam is more forgiving of learning-rate choice,
+size: Adam is more forgiving of learning-rate choice,
 whereas the effective region for well-tuned SGD is narrower and
 problem-specific.  The selected starting values, $10^{-3}$ for Adam and
 $10^{-2}$ for SGD, are conventional baselines for this comparison and are
@@ -64,7 +63,7 @@ size, initialization, and 30-epoch budget---was identical.  All four runs were
 also timed on the same NVIDIA GeForce RTX~3060 Laptop GPU, so device variation
 cannot explain the differences in Figure~\ref{fig:momentum-ablation}.
 
-The update on p.~103 of \emph{DNNs.pdf},
+The momentum update,
 \begin{equation}
   v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
   \qquad w \leftarrow w+v,
