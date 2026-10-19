@@ -17,6 +17,9 @@ import pytest
 from pr_edge.paths import PROJECT_ROOT
 
 NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "colab_run.ipynb"
+if not NOTEBOOK_PATH.is_file():
+    # The submission ZIP places notebooks beside raw_code/ for direct upload.
+    NOTEBOOK_PATH = PROJECT_ROOT.parent / "colab_run.ipynb"
 
 
 @pytest.fixture(scope="module")

@@ -25,7 +25,38 @@ supplementary MobileNetV2 config uses 224×224 through the same data pipeline.
 
 ---
 
-## Quickstart — local
+## Submission notebooks and upload package
+
+The lecturer requires the report PDF and notebook code as separate uploads.
+Five readable, runnable notebooks are in `notebooks/submission/`, covering data,
+custom architectures, training/optimizers, pretrained models, and evaluation.
+They contain the original Python implementation in Jupyter `%%writefile` cells
+and use the existing package and configs. Full training is opt-in; default
+workflows inspect recorded results and exercise the pipeline without downloads.
+
+After building the latest `report/main.pdf`, run:
+
+```bash
+python scripts/build_submission.py
+```
+
+This creates the gitignored `submission/` folder with `9_A03_EN3150.pdf` and
+`9_A03_EN3150_code.zip`. The ZIP contains the five task notebooks and the
+original optional Colab driver at its top level,
+a short README, and `raw_code/` with the Python sources, tests, configs, split
+metadata, recorded results and report sources. It excludes `AGENTS.md`,
+`CLAUDE.md`, dataset images, checkpoints, environments and Git metadata.
+Extract the entire ZIP before opening a notebook. Install the project
+requirements and Jupyter, or enable `INSTALL_DEPENDENCIES` in a fresh Colab
+runtime. Use a fresh kernel for each notebook.
+
+To refresh only the committed notebooks after editing Python source:
+
+```bash
+python scripts/build_submission.py --notebooks-only
+```
+
+## Local setup
 
 Requires Python 3.10 or newer and Git. Clone the repository, then create an
 isolated environment from the repository root:
