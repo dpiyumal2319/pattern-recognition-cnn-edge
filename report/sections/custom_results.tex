@@ -8,7 +8,7 @@ split was evaluated only after that selection.  Figure~\ref{fig:custom-loss}
 therefore compares like with like rather than mixing devices or training
 budgets.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=\linewidth]{figures/custom_loss_curves.png}
   \caption{Training and validation cross-entropy loss for Model~A and
@@ -16,7 +16,13 @@ budgets.
   \label{fig:custom-loss}
 \end{figure}
 
-\begin{table}[htbp]
+Table~\ref{tab:custom-comparison} shows the central resource--accuracy
+trade-off.  Replacing standard convolutions with depthwise and pointwise steps,
+and replacing the flattened classifier input with global average pooling,
+makes Model~B dramatically smaller while giving up some test accuracy, macro
+precision, and macro recall.
+
+\begin{table}[H]
   \centering
   \small
   \resizebox{\linewidth}{!}{\input{tables/custom_comparison.tex}}
@@ -27,30 +33,62 @@ budgets.
   \label{tab:custom-comparison}
 \end{table}
 
-Table~\ref{tab:custom-comparison} shows the central resource--accuracy
-trade-off.  Replacing standard convolutions with depthwise and pointwise steps,
-and replacing the flattened classifier input with global average pooling,
-makes Model~B dramatically smaller while giving up some test accuracy, macro
-precision, and macro recall.  At this 30-epoch budget, Model~B's extra errors
-fall mainly on visually overlapping land-cover categories:
-Figure~\ref{fig:model-b-confusion} shows more confusion among Herbaceous
-Vegetation, Permanent Crop, Highway, and River than
-Figure~\ref{fig:model-a-confusion}.  Model~A's largest errors lie elsewhere,
-with Industrial predicted as Residential and Permanent Crop as Herbaceous
-Vegetation.  Both models remain strong on classes with more distinctive
-appearance, including Forest, Residential, and Sea/Lake.  The convergence
-control below shows that much of Model~B's gap closes with longer training,
-so these 30-epoch confusions should not be attributed to reduced capacity
-alone.
+The storage saving is substantial, but the reduction in training time 
+per epoch is small. The profiler measures computation,
+while actual training time also depends on data loading, augmentation,
+framework overhead, memory access, and GPU efficiency. These factors were
+not measured separately, so they are a likely explanation rather than a
+measured one. Depthwise
+convolution reduces computation but does not guarantee a proportional 
+speed improvement on a GPU. Its benefits are clearer under the 
+assignment's edge-device constraints, where fewer parameters reduce 
+storage requirements and fewer MACs reduce computation per inference. 
+Section~\ref{sec:trade-offs} explains why these savings alone do not prove faster 
+execution on the target device.
+
+The confusion matrices show the types of mistakes made by each model. 
+Model~A's largest errors (Figure~\ref{fig:model-a-confusion}) occur 
+when Industrial areas are predicted as Residential areas and Permanent 
+Crop areas are predicted as Herbaceous Vegetation. 
+Model~B (Figure~\ref{fig:model-b-confusion}) makes more mistakes between 
+land-cover categories that look similar, including Herbaceous Vegetation, 
+Permanent Crop, Highway, and River. Both models perform well on classes 
+with more distinct appearances, such as Forest, Residential, and Sea/Lake. 
+These results are based on 30 epochs of training. 
+Section~\ref{sec:custom-convergence} shows that longer training reduces 
+much of the accuracy gap between Model~B and Model~A. Therefore,
+Model~B's additional classification errors should not be explained by its 
+smaller model size alone.
+
+% Both confusion matrices share one page so they can be compared directly.
+% Each keeps its own caption, number and label.
+\begin{figure}[p]
+  \centering
+  \includegraphics[height=0.42\textheight]{figures/model_a_confusion_matrix.png}
+  \caption{Model~A test confusion matrix.  Colour is normalised within each
+  true-class row and annotations give raw sample counts.}
+  \label{fig:model-a-confusion}
+
+  \vspace{1em}
+  \includegraphics[height=0.42\textheight]{figures/model_b_confusion_matrix.png}
+  \caption{Model~B test confusion matrix, using the same convention as
+  Figure~\ref{fig:model-a-confusion}.}
+  \label{fig:model-b-confusion}
+\end{figure}
+
+% Keep both confusion matrices in Section 4.1, before the next heading.
+\FloatBarrier
 
 \subsubsection{Convergence control}
+\label{sec:custom-convergence}
 
 The 30-epoch comparison controls the early training budget, but its loss curve
-shows that Model~B had not converged.  To separate convergence speed from
+(Figure~\ref{fig:custom-loss}) shows that Model~B had not converged.  To separate convergence speed from
 architecture capability, both models were therefore repeated for 100 epochs
-with otherwise identical configurations.  The first 30 loss and accuracy
-records reproduce the original runs exactly (apart from wall-clock noise), so
-this is a controlled extension rather than a new hyperparameter search.
+with otherwise identical configurations (Figure~\ref{fig:custom-convergence}).
+The first 30 loss and accuracy records reproduce the original runs exactly
+(apart from wall-clock noise), so this is a controlled extension rather than a
+new hyperparameter search.
 
 \begin{figure}[htbp]
   \centering
@@ -86,31 +124,6 @@ of the selected checkpoint.  Model~B selects the final epoch, so even the
 100-epoch result should be described as the achieved result, not a proven
 upper limit on the architecture.
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.82\linewidth]{figures/model_a_confusion_matrix.png}
-  \caption{Model~A test confusion matrix.  Colour is normalised within each
-  true-class row and annotations give raw sample counts.}
-  \label{fig:model-a-confusion}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.82\linewidth]{figures/model_b_confusion_matrix.png}
-  \caption{Model~B test confusion matrix, using the same convention as
-  Figure~\ref{fig:model-a-confusion}.}
-  \label{fig:model-b-confusion}
-\end{figure}
-
-The storage saving is substantial, but the epoch-time reduction is small.
-This is not a contradiction: the profiler counts arithmetic, whereas wall-clock
-training also includes data loading, augmentation, framework overhead, memory
-traffic, and the efficiency of the accelerator's particular convolution
-kernels.  Depthwise convolution reduces theoretical work without guaranteeing
-the same proportional speed-up on a highly parallel GPU.  Its benefit is
-clearer under the assignment's edge constraint, where the much smaller
-parameter footprint reduces storage and the lower MAC count reduces arithmetic
-per inference; Section~\ref{sec:trade-offs} explains why neither establishes
-on-device latency.  Model~A is preferable when predictive performance is the priority;
+Overall, Model~A is preferable when predictive performance is the priority;
 Model~B is the defensible choice when the parameter ceiling and deployability
 are hard constraints.
