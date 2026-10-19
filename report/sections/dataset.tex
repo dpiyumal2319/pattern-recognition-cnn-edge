@@ -45,7 +45,9 @@ same manifest rather than re-splitting, so the brief's requirement that the
 SOTA models use ``the same data splits as your custom networks'' holds by
 construction and can be checked. Table~\ref{tab:dataset-split} is generated
 from that manifest. The validation set is used for checkpoint and optimizer
-selection; the test set is evaluated once per model, after training.
+selection; the test set is evaluated once per model, after training. The
+training hyperparameters of every run are listed in
+Appendix~\ref{app:hyperparameters}.
 
 \begin{table}[htbp]
   \centering
