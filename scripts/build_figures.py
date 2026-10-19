@@ -53,6 +53,26 @@ BUILDERS = {
     "mobilenetv2_64_ft_confusion": lambda: plot_confusion_matrix(
         "mobilenetv2_64_ft", FIGURES_DIR / "mobilenetv2_64_ft_confusion_matrix.png"
     ),
+    # EfficientNet-B0 (#64): the same frozen-vs-fine-tuned pairs as MobileNetV2,
+    # again at batch 128 only (efficientnetb0_224_ft, the batch-32 record, is
+    # not plotted), plus a confusion matrix for each fine-tuned resolution.
+    "efficientnet_loss": lambda: plot_loss_curves(
+        ["efficientnetb0_64", "efficientnetb0_64_ft"],
+        FIGURES_DIR / "efficientnet_loss_curves.png",
+        title="EfficientNet-B0 at 64x64: training and validation loss",
+    ),
+    "efficientnet_224_loss": lambda: plot_loss_curves(
+        ["efficientnetb0_224", "efficientnetb0_224_ft_b128"],
+        FIGURES_DIR / "efficientnet_224_loss_curves.png",
+        title="EfficientNet-B0 at 224x224: training and validation loss",
+    ),
+    "efficientnetb0_64_ft_confusion": lambda: plot_confusion_matrix(
+        "efficientnetb0_64_ft", FIGURES_DIR / "efficientnetb0_64_ft_confusion_matrix.png"
+    ),
+    "efficientnetb0_224_ft_b128_confusion": lambda: plot_confusion_matrix(
+        "efficientnetb0_224_ft_b128",
+        FIGURES_DIR / "efficientnetb0_224_ft_b128_confusion_matrix.png",
+    ),
 }
 
 

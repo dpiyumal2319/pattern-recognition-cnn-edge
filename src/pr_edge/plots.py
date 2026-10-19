@@ -45,6 +45,12 @@ def _run_label(run_id: str) -> str:
         "mobilenetv2_224": "MobileNetV2 224x224 (frozen)",
         "mobilenetv2_224_ft": "MobileNetV2 224x224 (fine-tuned, batch 32)",
         "mobilenetv2_224_ft_b128": "MobileNetV2 224x224 (fine-tuned)",
+        # EfficientNet-B0 (#21, #64): the same matrix as MobileNetV2.
+        "efficientnetb0_64": "EfficientNet-B0 64x64 (frozen)",
+        "efficientnetb0_64_ft": "EfficientNet-B0 64x64 (fine-tuned)",
+        "efficientnetb0_224": "EfficientNet-B0 224x224 (frozen)",
+        "efficientnetb0_224_ft": "EfficientNet-B0 224x224 (fine-tuned, batch 32)",
+        "efficientnetb0_224_ft_b128": "EfficientNet-B0 224x224 (fine-tuned)",
     }
     return labels.get(run_id, run_id.replace("_", " ").title())
 

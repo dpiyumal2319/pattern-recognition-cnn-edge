@@ -161,13 +161,18 @@ def test_committed_figures_are_report_resolution():
         "model_a_confusion_matrix.png",
         "model_b_confusion_matrix.png",
         "mobilenetv2_64_ft_confusion_matrix.png",
+        "efficientnetb0_64_ft_confusion_matrix.png",
+        "efficientnetb0_224_ft_b128_confusion_matrix.png",
     ):
         image = mpimg.imread(figures / name)
         assert image.shape[0] >= 1800
         assert image.shape[1] >= 2400
 
 
-@pytest.mark.parametrize("name", ["sota_loss_curves.png", "sota_224_loss_curves.png"])
+@pytest.mark.parametrize("name", [
+    "sota_loss_curves.png", "sota_224_loss_curves.png",
+    "efficientnet_loss_curves.png", "efficientnet_224_loss_curves.png",
+])
 def test_sota_figures_are_report_resolution(name):
     """Two side-by-side panels each (frozen, fine-tuned), like the custom figure."""
     figures = plots.RESULTS_DIR.parent / "report" / "figures"
@@ -176,17 +181,24 @@ def test_sota_figures_are_report_resolution(name):
     assert image.shape[1] >= 3600
 
 
-@pytest.mark.parametrize("run_id,policy", [
-    ("mobilenetv2_64", "frozen"),
-    ("mobilenetv2_64_ft", "fine-tuned"),
-    ("mobilenetv2_224", "frozen"),
-    ("mobilenetv2_224_ft", "fine-tuned"),
-    ("mobilenetv2_224_ft_b128", "fine-tuned"),
+@pytest.mark.parametrize("run_id,network,size,policy", [
+    ("mobilenetv2_64", "MobileNetV2", "64x64", "frozen"),
+    ("mobilenetv2_64_ft", "MobileNetV2", "64x64", "fine-tuned"),
+    ("mobilenetv2_224", "MobileNetV2", "224x224", "frozen"),
+    ("mobilenetv2_224_ft", "MobileNetV2", "224x224", "fine-tuned"),
+    ("mobilenetv2_224_ft_b128", "MobileNetV2", "224x224", "fine-tuned"),
+    ("efficientnetb0_64", "EfficientNet-B0", "64x64", "frozen"),
+    ("efficientnetb0_64_ft", "EfficientNet-B0", "64x64", "fine-tuned"),
+    ("efficientnetb0_224", "EfficientNet-B0", "224x224", "frozen"),
+    ("efficientnetb0_224_ft", "EfficientNet-B0", "224x224", "fine-tuned"),
+    ("efficientnetb0_224_ft_b128", "EfficientNet-B0", "224x224", "fine-tuned"),
 ])
-def test_sota_labels_name_the_backbone_policy(run_id, policy):
-    """Frozen and fine-tuned runs share an architecture; the label must say which."""
+def test_sota_labels_name_the_backbone_policy(run_id, network, size, policy):
+    """Frozen and fine-tuned runs share an architecture; the label must say
+    which, and at which resolution. Without an entry, a run falls back to
+    title-casing its ID (e.g. "Efficientnetb0 64")."""
     label = plots._run_label(run_id)
-    assert label.startswith("MobileNetV2")
+    assert label.startswith(f"{network} {size} ")
     assert f"({policy}" in label
 
 
@@ -200,7 +212,11 @@ def test_every_figure_builder_runs_on_committed_results(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "FIGURES_DIR", tmp_path)
 
-    assert {"sota_loss", "sota_224_loss", "mobilenetv2_64_ft_confusion"} <= set(module.BUILDERS)
+    assert {
+        "sota_loss", "sota_224_loss", "mobilenetv2_64_ft_confusion",
+        "efficientnet_loss", "efficientnet_224_loss",
+        "efficientnetb0_64_ft_confusion", "efficientnetb0_224_ft_b128_confusion",
+    } <= set(module.BUILDERS)
     assert module.main(["--all"]) == 0
     assert len(list(tmp_path.glob("*.png"))) == len(module.BUILDERS)
     assert (tmp_path / "sota_loss_curves.png").stat().st_size > 0
