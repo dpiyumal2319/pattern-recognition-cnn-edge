@@ -5,37 +5,33 @@
 \subsection{Transfer-learning protocol}
 \label{sec:sota-protocol}
 
-Two pretrained lightweight architectures were adapted to EuroSAT:
-MobileNetV2~\cite{sandler2018mobilenetv2}, built from the depthwise separable
-blocks of Section~\ref{sec:task2}, and EfficientNet-B0~\cite{tan2019efficientnet}.
-Both start from torchvision's ImageNet weights. The final linear layer of each classifier is replaced by a
-new ten-class prediction layer, and every run uses the same stratified split,
+Two pretrained architectures were adapted to EuroSAT:
+MobileNetV2~\cite{sandler2018mobilenetv2}, and EfficientNet-B0~\cite{tan2019efficientnet}.
+Both start from ImageNet weights and the final linear layer of each classifier was replaced by a
+new ten-class prediction layer. Every run uses the same stratified split as the Models A and B, 
 random seed, augmentation, training-split normalisation statistics, batch
-size of 128, 30-epoch budget and Tesla~T4 as the custom models. The checkpoint
-is again chosen by lowest validation loss, before the test split is touched.
+size of 128, 30-epoch budget and Colab Tesla~T4 as the machine to run on. 
+The checkpoint was chosen by lowest validation loss, before testing.
 
-Once the new prediction layer is in place, there are two options:
+Once the new prediction layer is in place, there were two cases to choose from, either
 keep the pretrained backbone \emph{frozen}, or \emph{fine-tune} it. Each
-network was run both ways, so the choice is measured rather than assumed.
+network was tested using both methods, to decide wether there is a gain by fine tuning all parameters.
 
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Frozen.} Only the new prediction layer is trained, with Adam at
-  a learning rate of $10^{-3}$. The backbone acts as a fixed feature extractor,
-  and its batch-normalisation statistics are held at their ImageNet values.
-  \item \textbf{Fine-tuned.} Every weight is trained, starting from the same
-  ImageNet weights, with Adam at a learning rate of $10^{-4}$. We chose a rate
-  below the frozen-head rate to limit changes to the pretrained filters while
-  the new head learns. This is a project choice; the Keras EfficientNet
-  fine-tuning example cited by the brief uses $10^{-5}$~\cite{fu2020keras}.
+  \item \textbf{Frozen.} In this case, only the new prediction layer was trained, with Adam Optimizer at
+  a learning rate of $10^{-3}$. The CNN backbone acts as a fixed feature extractor,
+  and its batch-normalisation statistics were held at their original ImageNet values.
+  \item \textbf{Fine-tuned.} In this case, every weight was trained, starting from the
+  ImageNet weights, with Adam at a learning rate of $10^{-4}$. Here we chose a learning rate
+  below the frozen-backbone rate to limit changes to the pretrained filters while
+  the new classifier learns.
 \end{itemize}
 
-The primary runs keep the input at $64\times64$, the resolution the custom
-models see. That is the only like-for-like comparison with Model~B, and it is
-what an edge device would actually be given. Because ImageNet networks are
-designed for $224\times224$ input, a supplementary pair repeats each network
-with the $64\times64$ images upsampled to $224\times224$. Each supplementary
-pair differs from its primary pair in input size only, so the ablation
-isolates what resolution buys.
+Our main runs keep the input at $64\times64$,which is the original resolution that the custom
+models see. Because ImageNet networks are
+designed for $224\times224$ input, the experiment was repeated for each network
+with the $64\times64$ images upsampled to $224\times224$, for both the frozen and fine-tuned cases. Each $224\times224$
+pair differs from its original pair in input size only, so as to identify the effect of keeping the input images at the original resolution that the pretrained networks were trained on.
 
 \subsection{Results}
 \label{sec:sota-results}
@@ -48,105 +44,92 @@ isolates what resolution buys.
   \setlength{\tabcolsep}{4pt}
   \generatedtable{tables/sota_comparison.tex}{\#22}
   \caption{Pretrained lightweight models on the EuroSAT test split. Precision
-  and recall are macro averages over the ten classes. \emph{Trained} counts the
+  and recall are averages over the ten classes. \emph{Trained} counts the
   parameters updated during training. Sizes are in MB, measured from the saved
   weights; the custom models in Table~\ref{tab:custom-comparison} are in KB.
-  The supplementary rows upsample the $64\times64$ images to $224\times224$.}
+  The rows under Supplementary section upsample the $64\times64$ images to $224\times224$.}
   \label{tab:sota-comparison}
 \end{table}
 
-Table~\ref{tab:sota-comparison} lists both strategies for each network. Two
-columns are worth reading together. \emph{Parameters} and \emph{Size} are
+Table~\ref{tab:sota-comparison} lists the results from both cases for each network. \emph{Parameters} and \emph{Size} are
 identical for the frozen and fine-tuned runs of a network, because freezing
-changes what is trained, not what is deployed. \emph{Trained} is where they
-differ: a frozen backbone updates only the prediction layer, well under one
-per cent of the network, against every weight when fine-tuned. Any accuracy
-gap between the two rows of a pair is therefore bought with training effort
-alone, at no cost in memory or in operations per image.
+changes only what is already trained. \emph{Trained} is where they
+differ.  In the frozen case it updates only the prediction layer,which is under one
+per cent of the network. Accuracy
+gaps between the two rows of a pair is therefore bought with training effort
+alone, with no cost in memory.
 
-For both networks that gap is large. Fine-tuning raises every metric well
-above the frozen feature extractor. The likely explanation is a domain shift.
+We observed that for both networks that accuracy gap is large. Fine-tuning raises all the metrics by well
+above the frozen feature extractor CNN case. The explanation is likely the domain shift from ImageNet to Satellite Images.
 ImageNet filters were learnt on close-range photographs of objects, while
-EuroSAT is overhead satellite imagery at a much coarser scale. A frozen
-backbone can only re-weight features that were learnt for the wrong kind of
-image; fine-tuning lets the filters themselves move towards field boundaries,
+EuroSAT is overhead satellite images at a much smaller scale. 
+A frozen backbone can only re-weight features that were learnt for the wrong kind of
+image while fine-tuning lets the filters themselves move towards field boundaries,
 road textures and water.
 
-The two architectures also rank differently under the two strategies. Frozen,
+The two architectures also rank differently under the two strategies described above. Frozen,
 EfficientNet-B0 is clearly the weaker network, despite having almost twice
-MobileNetV2's parameters. Fine-tuned, the two are practically level. The
-frozen gap therefore says how well each network's ImageNet features happen to
-transfer to $64\times64$ overhead images, not how much each network can learn.
-At $64\times64$, both networks' downsampling stages leave a $2\times2$ final
-feature map. Reduced spatial detail may limit frozen-feature transfer, but
-this shared reduction alone does not explain EfficientNet-B0's larger
-accuracy deficit. Different sensitivity of the pretrained features to input
-scale is a possible explanation; these runs do not establish that mechanism.
+MobileNetV2's parameters. In the Fine-tuned case, the two networks are practically at the same level. The
+gap between the frozen runs shows how well each network's ImageNet features happen to
+transfer to $64\times64$ overhead satellite images.
 Once fine-tuned, however, EfficientNet-B0 offers no meaningful accuracy over
-MobileNetV2 for nearly twice the memory. MobileNetV2 is the better edge
+MobileNetV2 for nearly twice the memory. Therefore MobileNetV2 is the better edge
 candidate of the two.
 
-The supplementary rows show that resolution and fine-tuning are partly
-substitutes. Upsampling to $224\times224$ gives both frozen backbones a gain of
-several points, but the fine-tuned models gain less than one. A frozen
-network's filters are fixed at ImageNet's object scale, so enlarging the input
+The supplementary rows show that upsampling to $224\times224$ gives both frozen backbones a gain of
+several points, but the fine-tuned models gain less than one. A possible explanation for this is the fact that frozen
+network's filters are fixed at ImageNet's scale, so enlarging the input
 is the only way to bring the data to them. Fine-tuning instead moves the
 filters to the data, after which resolution matters much less: for each
 network, the fine-tuned $64\times64$ model outperforms the frozen
-$224\times224$ one. It does so at about $(224/64)^2\approx12$ times fewer
+$224\times224$ one. It also does about $(224/64)^2\approx12$ times fewer
 operations per image, because a convolution's cost scales with the $H\times W$
-of its output and the network is otherwise unchanged. For an edge device,
+of its output. For an edge device,
 fine-tuning at native resolution is the cheaper way to get accuracy.
 
 Even the smallest of these models is one to two orders of magnitude larger on
-disk than Model~B (Table~\ref{tab:custom-comparison}). That is why the two tables
-use different units. Whether the extra accuracy is worth that memory is the
+disk than Model~B (Table~\ref{tab:custom-comparison}). Whether the extra accuracy is worth that memory is the
 question Section~\ref{sec:task6} answers.
 
 The training curves (Figures~\ref{fig:sota-loss}--\ref{fig:efficientnet-224-loss})
-show the same split between the two strategies for both networks. Each frozen
-run levels off at a clearly higher loss than its fine-tuned partner. At
-$64\times64$ the frozen runs' training and validation losses stay close
-together: the fixed features, not overfitting, limit what the new prediction
-layer can learn. The frozen
-EfficientNet-B0 curves are also visibly noisier than MobileNetV2's: after the
-first few epochs both of its losses fluctuate around a plateau instead of
+show the difference between the two strategies for both networks. Each frozen
+run levels off at a higher loss than its fine-tuned counterpart. The frozen
+EfficientNet-B0 curves are also visibly noisier than MobileNetV2's. After the
+first few epochs both of its losses fluctuate instead of
 settling, and at $224\times224$ the lowest validation loss happens to fall early,
 so its selected checkpoint comes early in the run. The fine-tuned curves of
 both networks are smooth and settle within a few epochs.
 
-The noise in the frozen EfficientNet-B0 curves comes from its fixed features,
-not from a training fault. While its validation loss swings from epoch to
+The noise in the frozen EfficientNet-B0 curves comes from its fixed feature extraction. While its validation loss swings from epoch to
 epoch, its validation accuracy stays almost level, so the predicted classes
-barely change; what changes is the confidence given to the many images that
-the frozen features do not separate. Cross-entropy penalises a confidently
+barely change. What changes instead is actually the confidence given to the images that
+the frozen feature layers are unable to separate. Cross-entropy penalises a confidently
 wrong prediction heavily, so small updates to the prediction layer move the
 loss on these borderline images far more than they move the accuracy.
-MobileNetV2's frozen features leave fewer such images, and its loss is lower
+MobileNetV2's frozen features have fewer misclassified images, and its loss is lower
 and flatter. The two backbones also end in different activations.
 EfficientNet-B0 uses the unbounded SiLU (Swish)
-activation~\cite{tan2019efficientnet}, and a small fraction of images produce
-very large pooled features. MobileNetV2's ReLU6 caps every feature at
-six~\cite{sandler2018mobilenetv2}, the bounded behaviour discussed in
-Section~\ref{sec:activation-choice}. The activation range is a secondary
-factor, however. In a diagnostic check that retrained only the prediction
-layer on fixed features, standardising those features reduced the
+activation~\cite{tan2019efficientnet}, so a small fraction of images produce
+very large pooled features. 
+MobileNetV2's ReLU6 caps every feature at
+six~\cite{sandler2018mobilenetv2}. This bounded behaviour is discussed in
+Section~\ref{sec:activation-choice}. In a diagnostic check which retrained only the prediction
+layer, standardising those features reduced the
 fluctuation only slightly. Learning rates of $3\times10^{-4}$ and $10^{-4}$
-did not remove it either, so the frozen-head learning rate is not the cause.
+did not remove it either, so the learning rate is not the cause.
 The practical cost lies in checkpoint selection. On a noisy validation curve
 the lowest-loss epoch is partly a matter of chance, and it need not be the
 run's most accurate epoch. Fine-tuning removes the effect because the backbone
 adapts its features to EuroSAT, which is one more reason the comparison in
 Section~\ref{sec:task6} uses the fine-tuned runs.
 
-The confusion matrices of the fine-tuned models
-(Figures~\ref{fig:mobilenetv2-confusion}--\ref{fig:efficientnet-224-confusion})
+The confusion matrices of the fine-tuned $64\times64$ models
+(Figures~\ref{fig:mobilenetv2-confusion} and~\ref{fig:efficientnet-confusion})
 place the remaining errors in the same few class pairs for both networks.
-Highway and River are confused in both directions; at $64\times64$ both are
-thin linear features a few pixels wide. The agricultural and vegetation
+Highway and River are confused in both directions, possibly because at $64\times64$ both are
+thin features a few pixels wide. The agricultural and vegetation
 classes (AnnualCrop, PermanentCrop, Pasture and HerbaceousVegetation), which
-differ mainly in texture, account for a large share of the rest. For EfficientNet-B0,
-upsampling to $224\times224$ visibly reduces the Highway--River confusion.
+differ mainly in texture, account for a large share of the rest of the errors.
 
 \begin{figure}[htbp]
   \centering
@@ -194,12 +177,4 @@ upsampling to $224\times224$ visibly reduces the Highway--River confusion.
   \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
   $64\times64$.}
   \label{fig:efficientnet-confusion}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \generatedfigure[width=0.82\linewidth]{figures/efficientnetb0_224_ft_b128_confusion_matrix.png}{\#64}
-  \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
-  $224\times224$ (supplementary).}
-  \label{fig:efficientnet-224-confusion}
 \end{figure}

@@ -262,7 +262,7 @@ def build_optimizer_comparison(run_ids: list[str], out: Path) -> Path:
     lines = [
         r"\begin{tabular}{lrrrrrr}",
         r"\hline",
-        r"Optimizer & LR & Momentum & Best val. loss & Best val. acc. (\%) & Test acc. (\%) & Epoch (s) \\",
+        r"Optimizer & LR & SGD $m$ & Best val. loss & Val. acc. (\%) & Test acc. (\%) & Epoch (s) \\",
         r"\hline",
     ]
     for run_id in run_ids:
@@ -280,8 +280,10 @@ def build_optimizer_comparison(run_ids: list[str], out: Path) -> Path:
         name = "Adam" if optimizer["name"] == "adam" else "SGD"
         if optimizer["name"] == "sgd" and optimizer["momentum"] > 0:
             name = "SGD + momentum"
+        # This config field is SGD-only. Adam's moment coefficients are not zero.
+        momentum = f"{optimizer['momentum']:.1f}" if optimizer["name"] == "sgd" else "--"
         lines.append(
-            f"{name} & {optimizer['lr']:.3g} & {optimizer['momentum']:.1f} & "
+            f"{name} & {optimizer['lr']:.3g} & {momentum} & "
             f"{selection['best_val_loss']:.3f} & {100 * selection['best_val_acc']:.2f} & "
             f"{100 * metrics['accuracy']:.2f} & {profile['mean_epoch_seconds']:.2f} \\\\"
         )

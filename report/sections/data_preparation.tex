@@ -4,69 +4,65 @@
 \label{sec:data-preparation}
 
 \paragraph{Standardisation.}
-Each RGB channel is standardised,
+Each RGB channel is standardised as
 \begin{equation}
-  x' = \frac{x - \mu_c}{\sigma_c},
+  x'_c = \frac{x_c-\mu_c}{\sigma_c},
   \label{eq:standardisation}
 \end{equation}
-giving zero-mean, unit-variance feature scaling. Pixels are first scaled to
-$[0,1]$; $\mu_c$ and $\sigma_c$ are the
-per-channel mean and population standard deviation. Without this step the
-three channels enter the first convolution with different offsets and spreads,
-so the gradient scale differs per channel and a single learning rate suits none
-of them well. The same pipeline, with the same EuroSAT statistics, feeds the
-pretrained models in Task~5. Those networks were trained on standardised
-inputs, but with the channel statistics of ImageNet~\cite{deng2009imagenet};
-we use EuroSAT's own instead,
-so that every model in the comparison sees identically preprocessed images and
-the standardisation reflects the satellite data actually being classified.
+where pixel values are first scaled to $[0,1]$, and $\mu_c$ and $\sigma_c$
+denote the mean and population standard deviation of channel $c$. The
+statistics are computed from the EuroSAT training split and the same values
+are then applied to the training, validation, and test sets. This places the
+three colour channels on a comparable scale before they enter the network. The
+same EuroSAT-derived statistics are also used for the pretrained models in
+Task~5. Although those models were originally trained on ImageNet using
+ImageNet channel statistics~\cite{deng2009imagenet}, using a common EuroSAT
+preprocessing pipeline keeps the input treatment consistent across the models
+being compared.
 
 \paragraph{Statistics from the training set only.}
-Estimating preprocessing statistics before splitting would leak information:
-if $\mu_c$ and $\sigma_c$ were computed over all
-27,000 images, the preprocessing applied to the test set would already reflect
-the test images, and the test score would no longer be a fair estimate of
-performance on unseen data. We therefore fix the split first and estimate
-$\mu_c$ and $\sigma_c$ from the training set alone (Table~\ref{tab:dataset-split}) --- before any
-augmentation, at native resolution --- then apply those same values unchanged to
-the validation and test sets, as an unseen deployment image would be treated.
-The statistics are computed once and cached, so every experiment normalises
-identically.
+The normalisation statistics are estimated only from the training partition.
+Computing $\mu_c$ and $\sigma_c$ over all 27,000 images would allow
+information from the validation and test sets to influence preprocessing,
+which would weaken the independence of the final evaluation. The split is
+therefore fixed first, after which the channel means and standard deviations
+are calculated from the training images only, using the native-resolution
+images before augmentation. These same values are then applied unchanged to
+the validation and test sets. The statistics are cached after computation so
+that every experiment uses the same normalisation values.
 
 \paragraph{Augmentation.}
-Augmentation artificially expands the size and diversity of a dataset through
-transformations such as rotation and flipping. During training only, each image independently receives a horizontal
-flip and a vertical flip, each with probability 0.5, and a rotation by a
-uniformly chosen multiple of $90^\circ$. Together these produce all eight
-orientations of the square image, freshly sampled every epoch
-(Figure~\ref{fig:data-augmentation-grid}).
+Data augmentation is applied only to the training set. Each training image is
+independently subjected to a horizontal flip with probability 0.5, a vertical
+flip with probability 0.5, and a rotation chosen uniformly from $0^\circ$,
+$90^\circ$, $180^\circ$, and $270^\circ$. These transformations are sampled
+again each epoch, producing the eight possible orientations of a square image
+over time (Figure~\ref{fig:data-augmentation-grid}).
 
-These transformations are \emph{label-preserving} for EuroSAT specifically. The
-images are taken from directly overhead, so ``up'' in the image has no physical
-meaning: a river, a highway or a field is the same land-cover class whichever
-way it is rotated or mirrored. The same would not hold for ground-level
-photographs, where a vertically flipped scene is not a realistic image. The
-$90^\circ$ multiples are also exact pixel permutations of a square grid, so no
-interpolation blurs the image and no corner is filled with padding.
+These operations preserve the EuroSAT class labels because the images are
+captured from an overhead viewpoint, where image orientation has no fixed
+physical meaning. A highway, river or crop field remains the same land-cover
+class after rotation or reflection. Restricting rotations to multiples of
+$90^\circ$ also avoids interpolation and padding, since the transformation
+only rearranges pixels on the square image grid.
 
-Other common augmentations were deliberately not used. Random crops and
-rescaling would change the apparent size of objects, but Sentinel-2 imagery has
-a fixed ground resolution, so object size is real evidence --- a residential
-block and an industrial site differ partly in scale --- and at $64\times64$ a
-crop also discards much of a small image. Colour jitter was rejected because
-colour carries the class: water, vegetation and bare soil differ chiefly in
-their spectral response, so altering hue could turn one class's appearance into
-another's.
+Other common augmentations were not used. Random cropping and rescaling can
+alter the apparent scale of structures and may remove useful content from the
+small $64\times64$ images. Colour jitter was also avoided because colour and
+spectral appearance help distinguish classes such as vegetation, water, and
+bare or built-up surfaces.
 
 \paragraph{Evaluation preprocessing and class balance.}
-Validation and test images are only converted to tensors and standardised with
-the training statistics, so every evaluation is deterministic. The classes are
-mildly imbalanced (2,000 to 3,000 images; Table~\ref{tab:dataset-split}).
-Under-sampling and synthetic minority samples are possible remedies, but at a
-ratio of 1.5:1 neither was needed: stratification
-keeps the imbalance identical across the three sets, and the evaluation reports
-macro-averaged precision and recall alongside accuracy, so the smaller classes
-are not hidden by the larger ones.
+Validation and test images are converted to tensors and standardised using
+the statistics computed from the training set, with no random augmentation
+applied. This keeps ensures that repeated runs
+use the same inputs and evaluation deterministic. With class sizes
+ranging from 2,000 to 3,000 images (Table~\ref{tab:dataset-split}), EuroSAT has a mild class imbalance. There was no under sampling or
+synthetic minority generation used since the
+largest class is only 1.5 times the size of the smallest. Stratified splitting preserves the
+same class proportions across the training, validation, and test sets, while
+macro averaged precision and recall are reported together with accuracy so
+that performance on smaller classes contributes equally to the evaluation.
 
 \begin{figure}[htbp]
     \centering

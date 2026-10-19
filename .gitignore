@@ -35,6 +35,10 @@ report/*.fls
 report/*.fdb_latexmk
 report/*.synctex.gz
 report/main.pdf
+# LaTeX Workshop's temporary file while a build runs, and logs from compiling
+# a single section file on its own.
+report/*.synctex(busy)
+report/sections/*.log
 
 # OS
 .DS_Store

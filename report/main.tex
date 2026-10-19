@@ -23,6 +23,7 @@
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{float}
+\usepackage{placeins}  % \FloatBarrier keeps figures inside their section
 \usepackage{enumitem}
 \usepackage{fancyhdr}
 
@@ -128,8 +129,6 @@
 \begin{titlepage}
 \centering
 \vspace*{1.5cm}
-{\bfseries Department of Electronic \& Telecommunication Engineering, University of\\
-Moratuwa, Sri Lanka.\par}
 
 \vspace{1.5cm}
 \includegraphics[width=0.18\textwidth]{figures/uom_logo.png}
@@ -152,7 +151,6 @@ Moratuwa, Sri Lanka.\par}
 
 \vspace{1.5cm}
 {\bfseries EN3150 -- Pattern Recognition\par}
-Submitted in partial fulfillment of the requirements for the module
 
 \vspace{0.8cm}
 {\bfseries Code repository\par}
@@ -169,11 +167,6 @@ Submitted in partial fulfillment of the requirements for the module
 \tableofcontents
 \vspace{1cm}
 
-\noindent All code, configurations and result files are in the group's
-repository at \url{\repourl}. No result in this report is typed by hand: every
-table and figure is generated from the committed result files by the
-repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
-
 \newpage
 
 % =========================================================================
@@ -184,6 +177,8 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \input{sections/data_preparation}   % #3:  normalisation, augmentation, sample grid
 
 % =========================================================================
+% Flush the data-section figure before beginning the architecture review scope.
+\clearpage
 \section{Task 2: Custom Architecture Design}
 \label{sec:task2}
 
@@ -191,6 +186,7 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \input{sections/activations}        % #12: hardware-aware activation choice
 
 % =========================================================================
+\clearpage
 \section{Task 3: Optimizer Selection and Tuning}
 \label{sec:task3}
 
@@ -221,11 +217,12 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \section{Generated Layer Tables}
 \label{app:layer-tables}
 
-The per-layer tables below are produced by
-\texttt{scripts/build\_tables.py} directly from the model definitions, by a
-forward pass of one $64\times64$ image. They are the machine-generated
-counterpart of the hand derivations in Section~\ref{sec:task2}: every
-parameter count there must match the corresponding row here.
+\texttt{scripts/build\_tables.py} generates these tables from a forward pass
+of one $64\times64$ image through each model, and their parameter counts agree
+with the hand derivations in Section~\ref{sec:task2}.  The tables list only
+operations that change the shape or carry parameters, so ReLU and dropout do
+not appear in them.  Section~\ref{sec:custom-architecture} gives where those
+two operations sit in each model.
 
 \begin{table}[H]
   \centering
