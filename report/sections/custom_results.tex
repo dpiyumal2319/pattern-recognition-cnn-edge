@@ -22,7 +22,8 @@ budgets.
   \resizebox{\linewidth}{!}{\input{tables/custom_comparison.tex}}
   \caption{Custom-model comparison generated from the committed test metrics
   and profiler outputs.  Precision and recall are macro averages over the ten
-  EuroSAT classes; epoch time was measured on the same Tesla T4.}
+  EuroSAT classes; size is the saved model file, with 1~KB $=1024$ bytes;
+  epoch time was measured on the same Tesla T4.}
   \label{tab:custom-comparison}
 \end{table}
 
@@ -30,12 +31,17 @@ Table~\ref{tab:custom-comparison} shows the central resource--accuracy
 trade-off.  Replacing standard convolutions with depthwise and pointwise steps,
 and replacing the flattened classifier input with global average pooling,
 makes Model~B dramatically smaller while giving up some test accuracy, macro
-precision, and macro recall.  The reduced capacity is most visible for
-visually overlapping land-cover categories: Figure~\ref{fig:model-b-confusion}
-shows more confusion among Herbaceous Vegetation, Permanent Crop, Highway,
-and River than Figure~\ref{fig:model-a-confusion}.  In contrast, both models
-remain strong on classes with more distinctive appearance, including Forest,
-Residential, and Sea/Lake.
+precision, and macro recall.  At this 30-epoch budget, Model~B's extra errors
+fall mainly on visually overlapping land-cover categories:
+Figure~\ref{fig:model-b-confusion} shows more confusion among Herbaceous
+Vegetation, Permanent Crop, Highway, and River than
+Figure~\ref{fig:model-a-confusion}.  Model~A's largest errors lie elsewhere,
+with Industrial predicted as Residential and Permanent Crop as Herbaceous
+Vegetation.  Both models remain strong on classes with more distinctive
+appearance, including Forest, Residential, and Sea/Lake.  The convergence
+control below shows that much of Model~B's gap closes with longer training,
+so these 30-epoch confusions should not be attributed to reduced capacity
+alone.
 
 \subsubsection{Convergence control}
 
@@ -59,8 +65,8 @@ this is a controlled extension rather than a new hyperparameter search.
   \scriptsize
   \resizebox{\linewidth}{!}{\input{tables/custom_convergence.tex}}
   \caption{Controlled custom-model convergence comparison.  ``Selected'' is
-  the lowest-validation-loss checkpoint; all timings were measured on the
-  same Tesla T4.}
+  the lowest-validation-loss checkpoint; size uses 1~KB $=1024$ bytes; MACs
+  are per image; all timings were measured on the same Tesla T4.}
   \label{tab:custom-convergence}
 \end{table}
 
@@ -103,7 +109,8 @@ traffic, and the efficiency of the accelerator's particular convolution
 kernels.  Depthwise convolution reduces theoretical work without guaranteeing
 the same proportional speed-up on a highly parallel GPU.  Its benefit is
 clearer under the assignment's edge constraint, where the much smaller
-parameter footprint and lower MAC count directly reduce storage and inference
-work.  Model~A is preferable when predictive performance is the priority;
+parameter footprint reduces storage and the lower MAC count reduces arithmetic
+per inference; Section~\ref{sec:trade-offs} explains why neither establishes
+on-device latency.  Model~A is preferable when predictive performance is the priority;
 Model~B is the defensible choice when the parameter ceiling and deployability
 are hard constraints.
