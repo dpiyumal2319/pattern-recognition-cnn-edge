@@ -20,12 +20,13 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{listings}
-\usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{float}
 \usepackage{placeins}  % \FloatBarrier keeps figures inside their section
 \usepackage{enumitem}
 \usepackage{fancyhdr}
+% Load hyperlink patches after float and the other layout packages.
+\usepackage{hyperref}
 
 % ---------------------------------------------------------------- listings --
 % Code styles carried over unchanged from A02.
@@ -126,6 +127,8 @@
 \begin{document}
 
 % ------------------------------------------------------------- title page --
+% The unnumbered title page must not duplicate the contents page anchor.
+\hypersetup{pageanchor=false}
 \begin{titlepage}
 \centering
 \vspace*{1.5cm}
@@ -162,6 +165,7 @@
 \submissiondate
 
 \end{titlepage}
+\hypersetup{pageanchor=true}
 
 % --------------------------------------------------------------- contents --
 \tableofcontents

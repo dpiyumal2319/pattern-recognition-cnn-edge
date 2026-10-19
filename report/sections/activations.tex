@@ -44,7 +44,7 @@ Our activation comparison is therefore analytical, and we did not measure
 inference latency on a microcontroller.
 
 GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution,
-which is equivalent to an error function, and its common approximation uses
+which can be expressed using the error function, and its common approximation uses
 tanh~\cite{hendrycks2016gelu}.
 Leaky ReLU and PReLU keep a nonzero gradient on the negative branch when the
 slope is nonzero, but they need a multiply on that branch, and PReLU also has

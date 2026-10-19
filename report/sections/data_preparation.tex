@@ -55,8 +55,7 @@ bare or built-up surfaces.
 \paragraph{Evaluation preprocessing and class balance.}
 Validation and test images are converted to tensors and standardised using
 the statistics computed from the training set, with no random augmentation
-applied. This keeps ensures that repeated runs
-use the same inputs and evaluation deterministic. With class sizes
+applied. This keeps the evaluation inputs fixed and makes evaluation deterministic. With class sizes
 ranging from 2,000 to 3,000 images (Table~\ref{tab:dataset-split}), EuroSAT has a mild class imbalance. There was no under sampling or
 synthetic minority generation used since the
 largest class is only 1.5 times the size of the smallest. Stratified splitting preserves the
