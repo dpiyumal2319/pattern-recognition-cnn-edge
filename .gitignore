@@ -40,6 +40,9 @@ report/main.pdf
 .DS_Store
 Thumbs.db
 
+# Local temporary files
+/tmp/
+
 # NOTE: results/**/*.json and results/**/figures/*.png are deliberately NOT
 # ignored. They are the report's data source - every table and figure is
 # generated from them, so they must travel with the repo.
