@@ -20,12 +20,16 @@ For each frozen run it:
    head) on the fixed features, with Adam at several learning rates, and once
    more on standardised features at the run's own learning rate.
 
-If the noise persists at every learning rate, the learning rate is not the
-cause; if standardising removes little of it, the feature range is not the
-main cause. Output: results/frozen_head_diagnostic/diagnostic.json.
+Compare the observed loss variation across learning rates and feature scaling.
+Persistence at the tested rates does not rule out a learning-rate contribution,
+and standardisation is not an isolated intervention on activation choice.
+The epoch-loss standard deviation also includes any remaining learning trend.
+Output: results/frozen_head_diagnostic/diagnostic.json.
 
-This is a diagnostic, not a new experiment: it trains no backbone, reports no
-test-set number, and leaves the committed runs untouched.
+This supplementary diagnostic trains no backbone, reports no test-set number,
+and leaves the committed runs untouched. Its fixed, unaugmented features differ
+from the main training protocol, so it does not establish a unique cause of
+the original curves' fluctuations.
 """
 
 from __future__ import annotations

@@ -65,8 +65,11 @@ The report is `report/main.tex`. Each task's prose is in `report/sections/`,
 and any generated table or figure that does not exist yet renders as a red
 "Pending" box naming the issue that owes it, so the PDF always builds.
 
-The Task 5 explanation of the noisy frozen EfficientNet-B0 curves rests on a
-diagnostic that retrains only the prediction layer on fixed backbone features.
+A supplementary diagnostic investigates the noisy frozen EfficientNet-B0 curves
+by retraining only the prediction layer on fixed, unaugmented backbone features.
+It compares learning rates and feature standardisation across three head-training
+seeds; these comparisons do not isolate activation choice or prove a unique
+cause of the fluctuations in the main training runs.
 It needs the prepared dataset and about 25 minutes on a CPU, and writes
 `results/frozen_head_diagnostic/diagnostic.json`:
 

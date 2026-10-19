@@ -1,8 +1,8 @@
 """Tests for scripts/diagnose_frozen_head.py and its committed output.
 
 The unit tests use tiny synthetic tensors and models: no network, no dataset.
-The last group checks that the committed diagnostic still supports every claim
-the Task 5 paragraph makes about the noisy frozen EfficientNet-B0 curves.
+The last group checks empirical comparisons in the committed diagnostic.
+These comparisons do not establish a unique cause of the main runs' fluctuations.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def test_refuses_a_fine_tuned_run_before_loading_any_data():
         diag.diagnose_run("mobilenetv2_64_ft", [1e-3], [42], torch.device("cpu"), num_workers=0)
 
 
-# --- The committed output must support the report's claims ------------------
+# --- Empirical comparisons in the committed output -------------------------
 
 COMMITTED = RESULTS_DIR / "frozen_head_diagnostic" / "diagnostic.json"
 
@@ -152,7 +152,7 @@ def test_committed_diagnostic_covers_both_frozen_64_runs(committed):
             assert all(len(s["history"]) == 30 for s in head["per_seed"])
 
 
-def test_claim_the_learning_rate_is_not_the_cause(committed):
+def test_raw_efficientnet_heads_have_higher_loss_variation_at_each_tested_rate(committed):
     """At every learning rate tried, EfficientNet's head stays noisier than MobileNetV2's.
 
     Compared seed range against seed range: EfficientNet's quietest seed must
@@ -174,7 +174,7 @@ def test_claim_standardising_removes_most_of_the_extra_fluctuation(committed):
     assert standardised["val_loss_sd_mean"] < 1.5 * mobile_standardised["val_loss_sd_mean"]
 
 
-def test_claim_weaker_features_explain_the_higher_loss_not_the_noise(committed):
+def test_standardised_efficientnet_heads_have_higher_loss_and_lower_accuracy(committed):
     """Standardising leaves EfficientNet's loss far higher and its accuracy lower."""
     mobile, efficient = committed["mobilenetv2_64"], committed["efficientnetb0_64"]
     lr = efficient["configured_lr"]
@@ -184,7 +184,7 @@ def test_claim_weaker_features_explain_the_higher_loss_not_the_noise(committed):
     assert e["val_acc_mean_mean"] < m["val_acc_mean_mean"] - 0.03  # "several points lower"
 
 
-def test_claim_relu6_bounds_mobilenet_features_while_silu_lets_a_few_images_spike(committed):
+def test_observed_feature_ranges_differ_between_the_two_backbones(committed):
     mobile = committed["mobilenetv2_64"]["features"]["train"]
     efficient = committed["efficientnetb0_64"]["features"]["train"]
 
