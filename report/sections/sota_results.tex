@@ -53,7 +53,7 @@ pair differs from its original pair in input size only, so as to identify the ef
 
 Table~\ref{tab:sota-comparison} shows results obtained with both the frozen and fine-tuned configurations for each of the two networks.\emph{Parameters} and \emph{Size} are
 the same for the frozen and fine-tuned runs of the same network. Freezing a configuration
-only changes what is already trained, and threfore the difference is in the \emph{Trained} column. Accuracy
+only changes which parameters are trained, and threfore the difference is in the \emph{Trained} column. Accuracy
 gaps between the two rows of a pair is therefore obtained with training effort
 only, with no costs in the saved model's size. Fine-tuning does need more memory
 during training, because gradients are computed for every layer.
@@ -87,8 +87,8 @@ question Section~\ref{sec:task6} answers.
 The training curves (Figures~\ref{fig:sota-loss}--\ref{fig:efficientnet-224-loss})
 show the difference between the two approaches for both networks. Each frozen
 run converges at a higher loss than its respective fine-tuned one. The frozen
-EfficientNet-B0 curves are also visibly noisier than MobileNetV2's. For the
-first few epochs both models' losses fluctuate without converging, and at $224\times224$ the lowest validation loss happens to fall early,
+EfficientNet-B0 curves are also visibly noisier than MobileNetV2's. After the
+first few epochs both of its losses fluctuate without converging, and at $224\times224$ the lowest validation loss happens to fall early,
 so its selected checkpoint comes early in the run. Meanwhile, the fine-tuned curves of
 both networks are smooth and settle within a few epochs.
 
