@@ -304,4 +304,4 @@ These block the final assembly issue and need a human answer:
 - [x] Group number, for the `<groupno>_A03_EN3150` submission filename: **9**, so `9_A03_EN3150`
 - [x] All four members' names and index numbers, for the report title page (#26)
 - [x] Two more collaborator invites: all four members are collaborators (`dpiyumal2319`, `himadreee`, `JaninduRSD`, `erandatheewijeratne`)
-- [ ] Register EuroSAT in the shared course dataset sheet
+- [x] Register EuroSAT in the shared course dataset sheet
