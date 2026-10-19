@@ -71,10 +71,10 @@ is claimed here.
 \paragraph{Arithmetic cost and measured time.}
 At native resolution MobileNetV2 uses \FinalMobileMACRatio{} times and
 EfficientNet-B0 \FinalEfficientMACRatio{} times Model~B's MACs per image.
-The reduction follows the lecture's two-step construction: for a spatial
+Depthwise separable convolution uses a two-step construction: for a spatial
 kernel of width $F$, $K$ input channels and $L$ output channels, the regular
 cost per location is $F^2KL$, whereas depthwise plus pointwise costs
-$F^2K+KL$ (\texttt{CNNs.pdf}, pp.~43--44). Model~B also uses global average
+$F^2K+KL$. Model~B also uses global average
 pooling to reduce its dense input. Both SOTA networks already exploit
 efficient convolution blocks; Model~B's additional saving comes from its
 smaller overall architecture. The profiler counts convolution and linear

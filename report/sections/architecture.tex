@@ -2,7 +2,7 @@
 \label{sec:custom-architecture}
 
 Both custom networks accept a $64\times64$ RGB image and produce ten class
-logits.  Following the worked CNN in the lecture slides, each feature-extraction
+logits.  Each feature-extraction
 stage is a valid $3\times3$ convolution, ReLU, and $2\times2$ stride--2 max
 pool.  Thus the spatial sequence is
 $64\rightarrow62\rightarrow31\rightarrow29\rightarrow14\rightarrow12
@@ -12,8 +12,7 @@ so that the resource difference comes from two deliberate substitutions:
 standard convolution by depthwise separable convolution, and flattening by
 global average pooling (GAP).
 
-The parameter arithmetic follows the notation and worked examples in
-\emph{CNNs.pdf}, pp.~5--6 and 43--44.  A standard convolution has
+A standard convolution has
 \begin{equation}
   P_{\mathrm{conv}}=(K_hK_wC_{\mathrm{in}}+1)C_{\mathrm{out}},
 \end{equation}
@@ -24,7 +23,7 @@ pair instead has
   +(C_{\mathrm{in}}+1)C_{\mathrm{out}}.
 \end{equation}
 A dense layer has $(N_{\mathrm{in}}+1)N_{\mathrm{out}}$ parameters.  For one
-image, the slide convention counts convolution MACs as
+image, convolution MACs are counted as
 $K_hK_wC_{\mathrm{in}}C_{\mathrm{out}}H_{\mathrm{out}}W_{\mathrm{out}}$
 and dense MACs as $N_{\mathrm{in}}N_{\mathrm{out}}$; bias additions are not
 counted.  Max pooling, ReLU, dropout, flatten, and GAP have no trainable
@@ -35,8 +34,7 @@ operations are also outside the reported MAC total.
 
 Model A preserves all $128\times6\times6=4{,}608$ final feature values before
 the first dense layer.  Table~\ref{tab:model-a-hand-derivation} shows that this
-flattened head, rather than the convolutions, dominates its parameter count,
-which is consistent with the observation on p.~54 of the lecture slides.
+flattened head, rather than the convolutions, dominates its parameter count.
 
 \begin{table}[htbp]
   \centering
@@ -79,7 +77,7 @@ but unsuitable for the constrained model.
 For each Model B stage, the depthwise step applies one $3\times3$ filter to
 each input channel and the pointwise $1\times1$ step mixes those channels.
 The two rows are kept separate in Table~\ref{tab:model-b-hand-derivation} to
-mirror the two-step MobileNet calculation on pp.~43--44 of the lecture slides.
+show the cost of each step.
 GAP reduces the $128\times6\times6$ tensor to 128 channel means before the
 dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
 
@@ -133,11 +131,10 @@ feature extractor's representational width.
 Table~\ref{tab:separable-mac-saving} isolates the convolution substitution at
 identical input/output shapes.  Across the three stages it reduces convolution
 MACs from $29{,}439{,}360$ to $3{,}699{,}980$, a $7.96\times$ reduction.  The
-ratio approaches the slide's $8.7\times$ example as the channel count grows:
+reduction increases as the channel count grows:
 for $256\rightarrow256$, the exact per-location costs are
 $9\times256\times256=589{,}824$ and
-$9\times256+256\times256=67{,}840$, giving $8.69\times$; these are the exact
-values behind the slide's rounded 590,000 and 67,800.
+$9\times256+256\times256=67{,}840$, giving an $8.69\times$ reduction.
 
 \begin{table}[htbp]
   \centering
