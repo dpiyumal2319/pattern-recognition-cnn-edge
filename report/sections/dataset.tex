@@ -4,17 +4,14 @@
 \subsection{Dataset}
 \label{sec:dataset}
 
-We use EuroSAT,\footnote{P.~Helber, B.~Bischke, A.~Dengel and D.~Borth,
-\emph{EuroSAT: A Novel Dataset and Deep Learning Benchmark for Land Use and
-Land Cover Classification}, IEEE Journal of Selected Topics in Applied Earth
-Observations and Remote Sensing, 2019. \url{https://github.com/phelber/EuroSAT}.}
+We use EuroSAT~\cite{helber2019eurosat},
 a land-use and land-cover benchmark of
 27,000 labelled, geo-referenced Sentinel-2 satellite image patches in ten
 classes: AnnualCrop, Forest, HerbaceousVegetation, Highway, Industrial,
 Pasture, PermanentCrop, Residential, River and SeaLake. The original release
 covers all 13 Sentinel-2 spectral bands; we use its RGB version, the three
 visible bands encoded as 8-bit images. The dataset is distributed under the MIT
-licence and was obtained through \texttt{torchvision} (version 0.20 or later,
+licence and was obtained through \texttt{torchvision}~\cite{torchvision2016} (version 0.20 or later,
 which downloads from the maintained Hugging Face mirror). Each class is a
 separate land-cover category observed from directly overhead, which is what
 makes the augmentation in Section~\ref{sec:data-preparation} label-preserving.

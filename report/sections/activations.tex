@@ -18,9 +18,7 @@ each custom model evaluates
 hidden activation values per image.  Arm's CMSIS-NN Q7 reference ReLU implements
 each scalar as a negative comparison followed by assignment of zero; on
 DSP-capable M-profile cores its vector path masks four signed 8-bit values per
-loop iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_relu\_q7.c}}, lines 47--94,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_relu_q7.c}.}
+loop iteration~\cite[\texttt{arm\_relu\_q7.c}, ll.~47--94]{cmsisnn}.
 Thus ``one comparison'' describes the logical arithmetic, although real cycle
 counts also include loads, stores and loop control and depend on the core and
 compiler.  ReLU needs no coefficients, transcendental unit or lookup table.
@@ -36,11 +34,8 @@ extremes.  A representative embedded alternative illustrates the memory--time
 trade-off: CMSIS-NN implements 16-bit sigmoid and tanh by two reads from a
 256-entry \texttt{uint16\_t} sigmoid table plus integer interpolation for each
 value.  The table alone occupies $256\times2=512$ bytes of read-only memory,
-before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_nn\_activation\_s16.c}}, lines 47--108, and
-\texttt{arm\_nn\_tables.h}, line 37,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_nn_activation_s16.c},
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Include/arm_nn_tables.h}.}
+before code and temporary values~\cite[\texttt{arm\_nn\_activation\_s16.c},
+ll.~47--108; \texttt{arm\_nn\_tables.h}, l.~37]{cmsisnn}.
 Using either function at all hidden sites would therefore repeat table access
 and interpolation 195,456 times per image instead of applying a threshold.
 
@@ -50,9 +45,7 @@ integer emulation, while FPU-equipped Cortex-M4/M7 devices accelerate it; in
 the paper's 32-point floating-point real-FFT benchmark, the measured counts are
 16,183 cycles on Cortex-M3 and 962 on Cortex-M7, a $16.8\times$ difference.
 The same paper summarises the broader measured gap as approximately
-$20\times$.\footnote{Arm Ltd., \emph{DSP capabilities of Cortex-M4 and
-Cortex-M7}, 2016, pp.~3 and 12,
-\url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
+$20\times$~\cite[pp.~3, 12]{arm2016dsp}.
 This is not an \texttt{exp} benchmark, so it is not used as a universal
 activation latency; it demonstrates why an FPU-specific cycle claim would be
 misleading and why avoiding transcendental floating-point work is the safer
@@ -60,9 +53,8 @@ architecture choice.
 
 GELU was also rejected.  Its exact form $x\Phi(x)$ uses the Gaussian cumulative
 distribution (equivalently an error function), while its common approximation
-uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
-K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
-\url{https://arxiv.org/abs/1606.08415}.}
+uses tanh; either is more involved than
+thresholding~\cite{hendrycks2016gelu}.
 Leaky ReLU and PReLU are computationally efficient alternatives that
 avoid dead neurons, but they require a multiply on
 the negative branch; PReLU additionally stores and learns the slope $\alpha$.
@@ -73,9 +65,8 @@ and parameters are not justified.
 
 MobileNetV2 uses
 $\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because the bounded activation is
-robust under low-precision computation.\footnote{M. Sandler et al.,
-\emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
-\url{https://arxiv.org/abs/1801.04381}.}
+robust under low-precision
+computation~\cite[Sec.~4]{sandler2018mobilenetv2}.
 The upper bound prevents rare large activations from expanding the represented
 range, so a fixed number of integer levels can cover the useful interval more
 densely.  This is directly relevant to int8 deployment and explains why Arm

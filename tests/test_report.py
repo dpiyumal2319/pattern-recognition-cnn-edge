@@ -50,6 +50,67 @@ def _generated(text: str) -> list[str]:
     return tables + figures
 
 
+REFERENCES = REPORT_DIR / "references.tex"
+
+
+def _document() -> str:
+    """The report as LaTeX reads it: main.tex with every \\input expanded in place.
+
+    Citation order is a property of the whole document, not of one file, so
+    the IEEE-numbering test needs the sections in the order main.tex reads them.
+    """
+    def expand(text: str) -> str:
+        def include(match: re.Match) -> str:
+            path = REPORT_DIR / match.group(1)
+            return expand(_source(path if path.exists() else path.with_suffix(".tex")))
+        return re.sub(r"\\input\{([^}#]+)\}", include, text)
+    return expand(_source(MAIN))
+
+
+def _cited_keys(text: str) -> list[str]:
+    """Citation keys in order of appearance; handles \\cite[locator]{a,b}."""
+    keys = []
+    for match in re.finditer(r"\\cite(?:\[[^\]]*\])?\{([^}]+)\}", text):
+        keys += [key.strip() for key in match.group(1).split(",")]
+    return keys
+
+
+def _bibitems() -> list[str]:
+    return re.findall(r"\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}", _source(REFERENCES))
+
+
+def test_report_ends_with_a_references_section_in_the_contents():
+    text = _source(MAIN)
+    assert "\\input{references}" in text
+    assert "\\addcontentsline{toc}{section}{References}" in text
+    assert text.index("\\input{references}") > text.index("\\appendix")
+
+
+def test_every_citation_has_a_reference_and_every_reference_is_cited():
+    """IEEE lists only works cited in the text, and every citation must resolve."""
+    cited, listed = set(_cited_keys(_document())), _bibitems()
+    assert len(listed) == len(set(listed)), "duplicate \\bibitem key"
+    assert not cited - set(listed), f"cited but not listed: {sorted(cited - set(listed))}"
+    assert not set(listed) - cited, f"listed but never cited: {sorted(set(listed) - cited)}"
+
+
+def test_references_are_numbered_in_order_of_first_citation():
+    """IEEE numbers by first citation; thebibliography numbers by listing order.
+
+    So the \\bibitem order in references.tex must equal the order in which
+    each key is first cited in the document.
+    """
+    first_cited = list(dict.fromkeys(_cited_keys(_document())))
+    assert _bibitems() == first_cited
+
+
+@pytest.mark.parametrize("path", sorted(SECTIONS.glob("*.tex")), ids=lambda p: p.name)
+def test_sources_are_cited_not_linked_inline(path):
+    """A source belongs in the References section, not as a raw link in the text."""
+    text = _source(path)
+    assert not re.search(r"\\(url|href)\{", text), f"{path.name}: cite it instead"
+
+
 def test_main_inputs_every_required_section_in_task_order():
     inputs = [p for p in _inputs(_source(MAIN)) if p.startswith("sections/")]
     assert [p.removeprefix("sections/") for p in inputs] == REQUIRED_SECTIONS
