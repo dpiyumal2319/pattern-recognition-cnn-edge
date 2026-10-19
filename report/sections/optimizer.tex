@@ -100,7 +100,7 @@ The validation curves are consistent with faster convergence from momentum,
 but do not measure gradient directions or velocity directly.  With $m=0$,
 Equation~\ref{eq:momentum-update} has no memory and validation loss remains high within the epoch budget.
 Setting $m=0.5$ provides some carry-over and converges faster, but still leaves
-substantial loss after 30 epochs.  The $m=0.9$ run descends steadily and reaches
+substantial loss after 30 epochs.  The $m=0.9$ run descends with only small epoch-to-epoch fluctuations and reaches
 the lowest validation loss, making it the preferred momentum setting under the
 fixed budget.  At $m=0.99$, validation loss falls fastest initially but
 fluctuates during later epochs and finishes above its selected minimum.  Retaining more past velocity

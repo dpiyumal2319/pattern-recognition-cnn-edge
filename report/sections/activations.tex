@@ -19,8 +19,8 @@ hidden activation values per image.  Arm's CMSIS-NN Q7 reference ReLU implements
 each scalar as a negative comparison followed by assignment of zero; on
 DSP-capable M-profile cores its vector path masks four signed 8-bit values per
 loop iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_relu\_q7.c}}, lines 47--94,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_relu_q7.c}.}
+\texttt{arm\_relu\_q7.c}}, lines 50--101,
+\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_relu_q7.c}.}
 Thus ``one comparison'' describes the logical arithmetic, although real cycle
 counts also include loads, stores and loop control and depend on the core and
 compiler.  ReLU needs no coefficients, transcendental unit or lookup table.
@@ -37,10 +37,10 @@ trade-off: CMSIS-NN implements 16-bit sigmoid and tanh using a
 256-entry \texttt{uint16\_t} sigmoid table.  Non-saturated inputs use two table reads and integer
 interpolation; inputs outside the table range use a saturation branch.  The table alone occupies $256\times2=512$ bytes of read-only memory,
 before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_nn\_activation\_s16.c}}, lines 47--108, and
-\texttt{arm\_nn\_tables.h}, line 37,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_nn_activation_s16.c},
-\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Include/arm_nn_tables.h}.}
+\texttt{arm\_nn\_activation\_s16.c}}, lines 51--117, and
+\texttt{arm\_nn\_tables.h}, line 40,
+\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_nn_activation_s16.c},
+\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Include/arm_nn_tables.h}.}
 Using either function at all hidden sites would therefore require 195,456
 lookup/interpolation or saturation evaluations per image instead of applying
 a threshold.  These integer kernels illustrate possible embedded costs;
