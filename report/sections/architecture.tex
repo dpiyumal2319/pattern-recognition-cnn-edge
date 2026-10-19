@@ -84,8 +84,8 @@ Model B has to cut if it is to meet its parameter budget.
 In each Model B stage, the depthwise step applies one $3\times3$ filter to
 each input channel, and the pointwise $1\times1$ step then mixes those
 channels.  There is only one ReLU per stage, and it comes after the pointwise
-step.  Table~\ref{tab:model-b-hand-derivation} lists the two convolutions as
-separate rows so that the cost of each step can be seen.
+step.  Table~\ref{tab:model-b-hand-derivation} derives the depthwise and
+pointwise costs of each stage separately.
 
 \begin{table}[htbp]
   \centering
@@ -169,11 +169,10 @@ $8.69\times$ reduction.
 
 When the classifier heads are included, Model B has $18.72\times$ fewer
 trainable parameters and $8.06\times$ fewer MACs per image than Model A,
-which are reductions of $94.66\%$ and $87.60\%$.  These are counts and not
-measured speedups, because actual inference time also depends on memory
-traffic, kernel support and the operations left out of the MAC count.
+which are reductions of $94.66\%$ and $87.60\%$.  We did not measure the
+resulting speedup, and actual inference time also depends on memory traffic,
+kernel support and the operations left out of the MAC count.
 
 The forward-hook profiler gives $692{,}106$ parameters and $30{,}038{,}016$
 MACs for Model A, and $36{,}968$ parameters and $3{,}725{,}196$ MACs for
-Model B.  Both totals agree exactly with the hand derivations, so the tables
-describe the networks that we actually trained.
+Model B, which agree exactly with the hand derivations.

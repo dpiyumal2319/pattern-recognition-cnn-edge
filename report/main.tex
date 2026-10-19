@@ -226,10 +226,10 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 
 \texttt{scripts/build\_tables.py} generates these tables from a forward pass
 of one $64\times64$ image through each model, and their parameter counts agree
-with the hand derivations in Section~\ref{sec:task2}.  The tables only list
-operations that change the shape or carry parameters.  ReLU and dropout are
-left out of the tables, and their placement is described in
-Section~\ref{sec:custom-architecture}.
+with the hand derivations in Section~\ref{sec:task2}.  The tables list only
+operations that change the shape or carry parameters, so ReLU and dropout do
+not appear in them.  Section~\ref{sec:custom-architecture} gives where those
+two operations sit in each model.
 
 \begin{table}[H]
   \centering

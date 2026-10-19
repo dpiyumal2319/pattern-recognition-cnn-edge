@@ -28,8 +28,7 @@ coefficients $\beta_1=0.9$, $\beta_2=0.999$ and $\epsilon=10^{-8}$.
 The learning rates of $10^{-3}$ for Adam and $10^{-2}$ for SGD were starting
 values, and we did not run a separate learning-rate search for each optimizer.
 Each configuration was also trained with only one seed, so these results
-apply to these specific configurations and this training budget rather than
-to the optimizers in general.
+hold only for these specific configurations and this training budget.
 
 We selected Adam at $\alpha=10^{-3}$ for the custom-model runs because it
 had the lowest validation loss in Table~\ref{tab:optimizer-comparison}.  It
@@ -66,12 +65,11 @@ and test accuracy was used only for the final evaluation.
 We then trained Model~B using SGD with a fixed learning rate of
 $\alpha=10^{-2}$ and $m\in\{0,0.5,0.9,0.99\}$.  The split, seed, data order,
 augmentation, batch size, initialisation and 30-epoch budget were identical in
-all four runs, and all four used an NVIDIA GeForce RTX~3060 Laptop GPU.
-Figure~\ref{fig:momentum-ablation} uses the separate
-\texttt{momentum\_m000}, \texttt{momentum\_m050}, \texttt{momentum\_m090} and
-\texttt{momentum\_m099} records.  Because these ran on a different GPU, their
-epoch times cannot be compared directly with the T4 runs in
-Table~\ref{tab:optimizer-comparison}.
+all four runs, and all four used an NVIDIA GeForce RTX~3060 Laptop GPU, so
+their epoch times cannot be compared directly with the T4 runs in
+Table~\ref{tab:optimizer-comparison}.  Figure~\ref{fig:momentum-ablation}
+plots the four runs, which are recorded as \texttt{momentum\_m000},
+\texttt{momentum\_m050}, \texttt{momentum\_m090} and \texttt{momentum\_m099}.
 
 In the momentum update,
 \begin{equation}
@@ -91,9 +89,8 @@ it is still high after 30 epochs.  The $m=0.9$ run falls with small
 epoch-to-epoch fluctuations and reaches the lowest validation loss of the four.
 At $m=0.99$ the loss falls fastest at first, but it fluctuates in the later
 epochs and finishes above its selected minimum.  Keeping more of the past
-velocity could explain these fluctuations, but the saved loss curves do not
-record gradient directions, so they cannot show that the updates actually
-overshot.
+velocity could explain these fluctuations, although the loss curves alone
+cannot confirm it.
 
 We selected $m=0.9$ because it had the lowest validation loss.  The
 $m=0.99$ run had a slightly higher test accuracy, but that did not affect the

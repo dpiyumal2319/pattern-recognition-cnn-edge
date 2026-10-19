@@ -4,10 +4,9 @@
 Models A and B use ReLU, $f(x)=\max(0,x)$, after each convolutional stage and
 each hidden fully connected layer.  It passes positive values through
 unchanged and sets negative values to zero, so it does not saturate for
-positive inputs.  The weakness is that negative inputs have zero gradient,
-and a unit that stays inactive can stop learning, which is the dying-ReLU
-problem.  ReLU outputs are also not zero-centred, which is a second training
-risk rather than an inference cost.
+positive inputs.  Negative inputs have zero gradient, so a unit that stays
+inactive can stop learning, which is the dying-ReLU problem.  ReLU outputs are
+also not zero-centred.
 
 Each model applies ReLU to
 \begin{equation}
@@ -28,8 +27,8 @@ Sigmoid and tanh, defined as
   \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
   \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
 \end{equation}
-both need exponentials or an approximation of them.  Both functions also
-saturate at extreme inputs, where their gradients approach zero.  In CMSIS-NN,
+both need exponentials or an approximation of them.  They also saturate at
+extreme inputs, where their gradients approach zero.  In CMSIS-NN,
 the 16-bit versions of these functions use a 256-entry \texttt{uint16\_t}
 sigmoid table.  Inputs inside the table range need two table reads and an
 integer interpolation, and inputs outside it take a saturation branch.  The
