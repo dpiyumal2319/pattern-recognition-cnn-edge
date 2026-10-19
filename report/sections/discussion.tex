@@ -33,7 +33,7 @@ not be treated as its converged capability.
 \paragraph{Accuracy and training effort.}
 Model~B achieved the accuracy of \FinalBAccuracy\% using \FinalBParams{} parameters.
 MobileNetV2 and EfficientNet-B0 reach \FinalMobileAccuracy\% and
-\FinalEfficientAccuracy\%, respectively , This means they performed \FinalMobileGap{} and
+\FinalEfficientAccuracy\%, respectively. This means they performed \FinalMobileGap{} and
 \FinalEfficientGap{} percentage points better than Model~B. Even after training Model B 
 for more epochs, MobileNetV2 and EfficientNet-B0 still performed better. However, the 
 difference was much smaller than it appeared in the earlier comparison. Model B's best 
@@ -67,13 +67,13 @@ Appendix~\ref{app:layer-tables}. Materialising just that tensor in float32 needs
 $32\times62\times62\times4=492{,}032$ bytes, or about $480.5$~KiB, before
 other live tensors, operator workspace and the stack. It exceeds both the
 named target's SRAM and a hypothetical $256$~KiB SRAM budget even if weights
-stay in flash. therefore the unmodified full-tensor implementation has not been
+stay in flash. Therefore the unmodified full-tensor implementation has not been
 shown to fit this microcontroller. A different memory schedule would need
 separate verification and no embedded implementation or peak-RAM measurement
 is claimed here.
 
 \paragraph{Arithmetic cost and measured time.}
-In the original image resolution, MobileNetV2 use \FinalMobileMACRatio{} times and
+In the original image resolution, MobileNetV2 uses \FinalMobileMACRatio{} times and
 EfficientNet-B0 \FinalEfficientMACRatio{} times Model~B's MACs per image.
 Depthwise separable convolution uses a two-step construction: for a spatial
 kernel of width $F$, $K$ input channels and $L$ output channels, the regular
@@ -101,7 +101,7 @@ backbones at each resolution. Their improvement at fixed $64\times64$
 supports adapting the pretrained representation to satellite imagery;
 it does not measure the benefit of ImageNet initialisation in isolation.
 There is no same-architecture SOTA run trained from random initialisation.
-Hence , architecture, capacity and pretraining remain confounded in the comparison
+Hence, architecture, capacity and pretraining remain confounded in the comparison
 with Model~B. The lower accuracy of frozen models may be due to the difference 
 between ImageNet images and EuroSAT satellite images. 
 
@@ -110,8 +110,8 @@ they add no new sensor detail. The fine-tuned models at the original
 resolution achieve higher accuracy than the frozen models using enlarged 
 images. Further, enlarging the images after fine-tuning improves 
 accuracy by less than one percentage point, while also requiring substantially 
-more computation. This is showing why the final comparison keeps native input and treats
-upsampling separately:it's because a resolution gain must not be credited to pretraining
+more computation. This is why the final comparison keeps native input and treats
+upsampling separately: a resolution gain must not be credited to pretraining
 or presented as free accuracy under an edge compute budget.
 
 \paragraph{Choosing under constraints and limitations.}
