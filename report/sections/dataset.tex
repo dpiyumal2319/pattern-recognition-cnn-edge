@@ -4,48 +4,52 @@
 \subsection{Dataset}
 \label{sec:dataset}
 
-We use EuroSAT~\cite{helber2019eurosat},
-a land-use and land-cover benchmark of
-27,000 labelled, geo-referenced Sentinel-2 satellite image patches in ten
+We use EuroSAT~\cite{helber2019eurosat}, a land-use and land-cover dataset
+containing 27,000 labelled, geo-referenced Sentinel-2 image patches across ten
 classes: AnnualCrop, Forest, HerbaceousVegetation, Highway, Industrial,
-Pasture, PermanentCrop, Residential, River and SeaLake. The original release
-covers all 13 Sentinel-2 spectral bands; we use its RGB version, the three
-visible bands encoded as 8-bit images. The dataset is distributed under the MIT
-licence and was obtained through \texttt{torchvision}~\cite{torchvision2016} (version 0.20 or later,
-which downloads from the maintained Hugging Face mirror). Each class is a
-separate land-cover category observed from directly overhead, which is what
-makes the augmentation in Section~\ref{sec:data-preparation} label-preserving.
+Pasture, PermanentCrop, Residential, River, and SeaLake. Although the original
+dataset includes all 13 Sentinel-2 spectral bands, this work uses the RGB
+version, which contains the three visible bands stored as 8-bit images. The
+dataset is available under the MIT licence and was downloaded through
+\texttt{torchvision}~\cite{torchvision2016} version 0.20 or later, which uses
+the maintained Hugging Face mirror. Because each class represents a land-cover
+category viewed from an overhead perspective, orientation changes such as
+flips and 90-degree rotations do not alter the class label, which supports the
+augmentation choices described in Section~\ref{sec:data-preparation}.
 
 \paragraph{Input resolution.}
-\textbf{Every EuroSAT image is natively $64\times64$ pixels.} The brief asks for
-images to be downscaled to a maximum of $64\times64$ to emulate a low-resource
-sensor. For EuroSAT this requirement is met by construction: no image is
-larger, so no downscaling step exists to be skipped, and the custom models
-consume the images at their original resolution without discarding any spatial
-detail. Figure~\ref{fig:data-augmentation-grid} shows one native image per
-class. The only resize anywhere in the project is an \emph{upsampling} to
-$224\times224$ for the single SOTA resolution ablation in Task~5, which
-deliberately tests the pretrained models at their design resolution.
+All EuroSAT images have a native resolution of $64\times64$ pixels. Since the
+assignment specifies a maximum input resolution of $64\times64$ for the
+low-resource setting, the dataset already satisfies this requirement and no
+downscaling is needed. The custom models therefore use the original images
+directly, without reducing their spatial resolution.
+Figure~\ref{fig:data-augmentation-grid} shows one native sample from each
+class. The only resizing beyond the native resolution is an upsampling step to
+$224\times224$ for the supplementary SOTA resolution experiment in Task~5,
+where the pretrained models are also evaluated at their standard design
+resolution.
 
 \paragraph{Split.}
-The images were divided once into training, validation and test
-sets in the brief's 70/15/15 proportions. The split is \emph{stratified}: each
-class is divided 70/15/15 on its own, so every set has the same class mix as
-the full dataset. Class sizes range from 2,000 to 3,000 images
-(Table~\ref{tab:dataset-split}), all of which divide exactly into 70/15/15,
-so every per-class and total proportion is exact. Each class's images are
-sorted by file name and shuffled with a fixed seed (42), which makes the
-partition a function of the files alone and identical on every machine.
+The dataset was divided once into training, validation, and test sets using
+the required 70/15/15 proportions. The split was stratified by class, so each
+class was divided independently and the class distribution remains consistent
+across all three sets. Class sizes range from 2,000 to 3,000 images
+(Table~\ref{tab:dataset-split}), and these sizes allow the 70/15/15
+proportions to be applied exactly. Within each class, image files were sorted
+by name and then shuffled using a fixed seed of 42. This makes the split
+reproducible and ensures that the same partition is obtained across different
+machines.
 
 \paragraph{One partition for every experiment.}
-The assignment of every image to its set is stored in a manifest file,
-\texttt{data/splits.csv}, committed to the repository. Every experiment --- both
-custom models, the optimizer study and the fine-tuned SOTA models --- reads this
-same manifest rather than re-splitting, so the brief's requirement that the
-SOTA models use ``the same data splits as your custom networks'' holds by
-construction and can be checked. Table~\ref{tab:dataset-split} is generated
-from that manifest. The validation set is used for checkpoint and optimizer
-selection; the test set is evaluated once per model, after training.
+The train, validation, and test assignment for each image is recorded in the
+committed manifest, \texttt{data/splits.csv}. All experiments use this same
+file, including the custom models, optimizer comparison, and fine-tuned SOTA
+models, rather than generating new splits. This keeps the data partition fixed
+across experiments and satisfies the requirement that the SOTA models use the
+same splits as the custom networks. Table~\ref{tab:dataset-split} is generated
+directly from this manifest. The validation set is used for model and
+optimizer selection, while the test set is reserved for final evaluation after
+training.
 
 \begin{table}[htbp]
   \centering
