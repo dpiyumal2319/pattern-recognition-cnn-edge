@@ -81,8 +81,10 @@ smaller overall architecture. The profiler counts convolution and linear
 MACs, excluding activation functions, normalisation, pooling and memory
 traffic. It therefore supports an arithmetic comparison, not a prediction
 of latency or energy. In particular, the Tesla~T4 epoch-time ratios are much
-smaller than the MAC ratios because training also pays for data loading,
-augmentation, backward passes and device-specific kernels.
+smaller than the MAC ratios. Training time also includes data loading,
+augmentation and framework overhead, and a GPU does not run every layer type
+equally efficiently; these costs were not profiled separately, so they are a
+likely explanation rather than a measured breakdown.
 
 \paragraph{What pretraining and resolution establish.}
 Table~\ref{tab:sota-comparison} separates frozen from fully fine-tuned
@@ -106,8 +108,8 @@ or presented as free accuracy under an edge compute budget.
 A custom model is attractive for a fixed label set and sensor resolution when
 storage and arithmetic ceilings dominate. Its weights are learnt directly
 from the project's data and its architecture can be controlled without
-depending on a supplied pretrained checkpoint. This does not remove the
-dataset and software licences. Pretrained networks offer stronger achieved
+depending on a supplied pretrained checkpoint, although the dataset and
+software licences still apply. Pretrained networks offer stronger achieved
 accuracy here and a practical starting point when development time or
 labelled data are limited, especially for domains closer to their source
 data. Those general advantages were not isolated by a data-size or
@@ -120,8 +122,9 @@ Among the pretrained options, EfficientNet-B0 gains only
 \FinalSOTAExtraCorrect{} extra correct test predictions, with substantially
 larger storage and MAC requirements. Without repeated seeds this small gap
 does not establish reliable superiority. More broadly, these are single-seed
-results on one image split: they do not demonstrate geographic transfer,
-robustness to a different sensor, or uncertainty in the model ranking.
+results on one image split: they do not demonstrate geographic transfer or
+robustness to a different sensor, and they do not quantify the uncertainty
+in the model ranking.
 
 \subsection{Conclusion}
 \label{sec:conclusion}
