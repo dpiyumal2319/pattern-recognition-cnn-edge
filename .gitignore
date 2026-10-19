@@ -35,7 +35,6 @@ report/*.fls
 report/*.fdb_latexmk
 report/*.synctex.gz
 report/main.pdf
-report/dasun.pdf
 
 # OS
 .DS_Store
