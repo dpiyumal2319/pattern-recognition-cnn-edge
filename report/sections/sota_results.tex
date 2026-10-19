@@ -122,15 +122,15 @@ six~\cite{sandler2018mobilenetv2}, the bounded behaviour discussed in
 Section~\ref{sec:activation-choice}. In a diagnostic check that retrained only the prediction
 layer on fixed features, standardising those features reduced the
 fluctuation only slightly. Learning rates of $3\times10^{-4}$ and $10^{-4}$
-did not remove it either, so the frozen-head learning rate is not the cause.
+did not remove it either, so the frozen backbone learning rate is not the cause.
 The practical cost lies in checkpoint selection. On a noisy validation curve
 the lowest-loss epoch is partly a matter of chance, and it need not be the
 run's most accurate epoch. Fine-tuning removes the effect because the backbone
 adapts its features to EuroSAT, which is one more reason the comparison in
 Section~\ref{sec:task6} uses the fine-tuned runs.
 
-The confusion matrices of the fine-tuned models
-(Figures~\ref{fig:mobilenetv2-confusion}--\ref{fig:efficientnet-224-confusion})
+The confusion matrices of the fine-tuned $64\times64$ models
+(Figures~\ref{fig:mobilenetv2-confusion} and~\ref{fig:efficientnet-confusion})
 place the remaining errors in the same few class pairs for both networks.
 Highway and River are confused in both directions; at $64\times64$ both are
 thin linear features a few pixels wide. The agricultural and vegetation
@@ -183,12 +183,4 @@ differ mainly in texture, account for a large share of the rest.
   \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
   $64\times64$.}
   \label{fig:efficientnet-confusion}
-\end{figure}
-
-\begin{figure}[htbp]
-  \centering
-  \generatedfigure[width=0.82\linewidth]{figures/efficientnetb0_224_ft_b128_confusion_matrix.png}{\#64}
-  \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
-  $224\times224$ (supplementary).}
-  \label{fig:efficientnet-224-confusion}
 \end{figure}
