@@ -103,12 +103,41 @@ disk than Model~B (Table~\ref{tab:custom-comparison}). That is why the two table
 use different units. Whether the extra accuracy is worth that memory is the
 question Section~\ref{sec:task6} answers.
 
+The training curves (Figures~\ref{fig:sota-loss}--\ref{fig:efficientnet-224-loss})
+show the same split between the two strategies for both networks. Each frozen
+run levels off at a clearly higher loss than its fine-tuned partner. At
+$64\times64$ the frozen runs' training and validation losses stay close
+together: the fixed features, not overfitting, limit what the new prediction
+layer can learn. The frozen
+EfficientNet-B0 curves are also visibly noisier than MobileNetV2's, and at
+$224\times224$ its validation loss turns upwards after an early minimum while
+its training loss keeps falling, so its selected checkpoint comes early in the
+run. The fine-tuned curves of both networks are smooth and settle within a few
+epochs.
+
+The confusion matrices of the fine-tuned models
+(Figures~\ref{fig:mobilenetv2-confusion}--\ref{fig:efficientnet-224-confusion})
+place the remaining errors in the same few class pairs for both networks.
+Highway and River are confused in both directions; at $64\times64$ both are
+thin linear features a few pixels wide. The agricultural and vegetation
+classes (AnnualCrop, PermanentCrop, Pasture and HerbaceousVegetation), which
+differ mainly in texture, account for a large share of the rest. For EfficientNet-B0,
+upsampling to $224\times224$ visibly reduces the Highway--River confusion.
+
 \begin{figure}[htbp]
   \centering
   \generatedfigure{figures/sota_loss_curves.png}{\#20}
   \caption{Training and validation loss of MobileNetV2 at $64\times64$, with
   the backbone frozen and fine-tuned.}
   \label{fig:sota-loss}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure{figures/efficientnet_loss_curves.png}{\#64}
+  \caption{Training and validation loss of EfficientNet-B0 at $64\times64$,
+  with the backbone frozen and fine-tuned.}
+  \label{fig:efficientnet-loss}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -121,7 +150,32 @@ question Section~\ref{sec:task6} answers.
 
 \begin{figure}[htbp]
   \centering
+  \generatedfigure{figures/efficientnet_224_loss_curves.png}{\#64}
+  \caption{Training and validation loss of EfficientNet-B0 at $224\times224$
+  (the supplementary resolution ablation), with the backbone frozen and
+  fine-tuned.}
+  \label{fig:efficientnet-224-loss}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
   \generatedfigure[width=0.82\linewidth]{figures/mobilenetv2_64_ft_confusion_matrix.png}{\#20}
   \caption{Test confusion matrix of the fine-tuned MobileNetV2 at $64\times64$.}
   \label{fig:mobilenetv2-confusion}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure[width=0.82\linewidth]{figures/efficientnetb0_64_ft_confusion_matrix.png}{\#64}
+  \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
+  $64\times64$.}
+  \label{fig:efficientnet-confusion}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \generatedfigure[width=0.82\linewidth]{figures/efficientnetb0_224_ft_b128_confusion_matrix.png}{\#64}
+  \caption{Test confusion matrix of the fine-tuned EfficientNet-B0 at
+  $224\times224$ (supplementary).}
+  \label{fig:efficientnet-224-confusion}
 \end{figure}
