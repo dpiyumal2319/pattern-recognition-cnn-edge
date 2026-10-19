@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_DIR = ROOT / "notebooks" / "submission"
-STEM = "9_A03_EN3150"
+STEM = "Xception_A03_EN3150"
 
 SETUP = '''from pathlib import Path
 import os
@@ -211,7 +211,7 @@ def generate_notebooks(root: Path = ROOT, destination: Path = NOTEBOOK_DIR) -> l
     destination.mkdir(parents=True, exist_ok=True)
     paths = []
     for slug, title, task, sources, workflow, explanation in SPECS:
-        contents = [("markdown", f"# {title}\n\nEN3150 Assignment 03 - Group 9. {task}.\n\n{explanation}\n\n"
+        contents = [("markdown", f"# {title}\n\nEN3150 Assignment 03 - Xception. {task}.\n\n{explanation}\n\n"
                      "## Running this notebook\n\nUse Python 3.10+ with the project dependencies. "
                      "Extract the whole ZIP and open this notebook beside raw_code/. "
                      "On Colab, upload and extract the complete ZIP before running. "
@@ -259,7 +259,7 @@ def submission_files(root: Path) -> list[Path]:
     return files
 
 
-PACKAGE_README = '''# EN3150 Assignment 03 - Group 9 code submission
+PACKAGE_README = '''# EN3150 Assignment 03 - Xception code submission
 
 The report PDF is submitted separately. Extract this entire ZIP before use.
 Open the six numbered top-level notebooks in order, or run each independently

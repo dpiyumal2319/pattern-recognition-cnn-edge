@@ -120,7 +120,8 @@ def test_package_layout_exclusions_and_verbatim_pdf(tmp_path):
     pdf.write_bytes(b"%PDF-1.7\nunchanged final report\n")
     final, archive = submission.build_package(root, [notebook], pdf, tmp_path / "submission")
     assert final.read_bytes() == pdf.read_bytes()
-    assert final.name == "9_A03_EN3150.pdf"
+    assert final.name == "Xception_A03_EN3150.pdf"
+    assert archive.name == "Xception_A03_EN3150_code.zip"
     with zipfile.ZipFile(archive) as bundle:
         assert bundle.testzip() is None
         names = set(bundle.namelist())

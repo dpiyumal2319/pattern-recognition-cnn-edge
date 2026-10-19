@@ -40,8 +40,8 @@ After building the latest `report/main.pdf`, run:
 python scripts/build_submission.py
 ```
 
-This creates the committed `submission/` folder with `9_A03_EN3150.pdf` and
-`9_A03_EN3150_code.zip`. The ZIP contains the six task notebooks and the
+This creates the committed `submission/` folder with `Xception_A03_EN3150.pdf` and
+`Xception_A03_EN3150_code.zip`. The ZIP contains the six task notebooks and the
 original optional Colab driver at its top level,
 a short README, and `raw_code/` with the Python sources, tests, configs, split
 metadata, recorded results and report sources. It excludes `AGENTS.md`,
