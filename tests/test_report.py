@@ -183,7 +183,9 @@ def test_every_generated_artifact_exists():
 def test_title_page_names_the_group_members_and_repository():
     """The brief requires every member's name and index number, plus a GitHub link."""
     text = _source(MAIN)
-    assert re.search(r"\\newcommand\{\\groupno\}\{\d+\}", text)
+    assert r"\newcommand{\groupname}{Xception}" in text
+    assert r"\bfseries \groupname\par" in text
+    assert r"\groupno" not in text
     title = text[text.index("\\begin{titlepage}"):text.index("\\end{titlepage}")]
     members = re.findall(r"^\s*(\S[^&\n]*?)\s*&\s*(\d{6}[A-Z])\s*\\\\", title, re.MULTILINE)
     assert len(members) == 4, members
