@@ -153,19 +153,35 @@ def test_committed_diagnostic_covers_both_frozen_64_runs(committed):
 
 
 def test_claim_the_learning_rate_is_not_the_cause(committed):
-    """At every learning rate tried, EfficientNet's head stays noisier than MobileNetV2's."""
+    """At every learning rate tried, EfficientNet's head stays noisier than MobileNetV2's.
+
+    Compared seed range against seed range: EfficientNet's quietest seed must
+    still be clearly noisier than MobileNetV2's noisiest at the same rate.
+    """
     mobile, efficient = committed["mobilenetv2_64"], committed["efficientnetb0_64"]
     for lr in {h["lr"] for h in efficient["heads"] if not h["standardised"]}:
-        assert _head(efficient, lr)["val_loss_sd"] > 2 * _head(mobile, lr)["val_loss_sd"], lr
+        assert _head(efficient, lr)["val_loss_sd_min"] > 1.5 * _head(mobile, lr)["val_loss_sd_max"], lr
 
 
-def test_claim_standardising_reduces_the_noise_only_slightly(committed):
+def test_claim_standardising_removes_most_of_the_extra_fluctuation(committed):
+    """Standardised, EfficientNet's head is about as steady as a standardised MobileNetV2 head."""
     mobile, efficient = committed["mobilenetv2_64"], committed["efficientnetb0_64"]
     lr = efficient["configured_lr"]
     raw, standardised = _head(efficient, lr), _head(efficient, lr, standardised=True)
 
-    assert standardised["val_loss_sd"] < raw["val_loss_sd"]
-    assert standardised["val_loss_sd"] > 2 * _head(mobile, lr)["val_loss_sd"]
+    assert standardised["val_loss_sd_mean"] < 0.6 * raw["val_loss_sd_mean"]  # "roughly halved"
+    mobile_standardised = _head(mobile, lr, standardised=True)
+    assert standardised["val_loss_sd_mean"] < 1.5 * mobile_standardised["val_loss_sd_mean"]
+
+
+def test_claim_weaker_features_explain_the_higher_loss_not_the_noise(committed):
+    """Standardising leaves EfficientNet's loss far higher and its accuracy lower."""
+    mobile, efficient = committed["mobilenetv2_64"], committed["efficientnetb0_64"]
+    lr = efficient["configured_lr"]
+    e, m = _head(efficient, lr, standardised=True), _head(mobile, lr, standardised=True)
+
+    assert e["val_loss_mean_mean"] > 2 * m["val_loss_mean_mean"]  # "more than twice as high"
+    assert e["val_acc_mean_mean"] < m["val_acc_mean_mean"] - 0.03  # "several points lower"
 
 
 def test_claim_relu6_bounds_mobilenet_features_while_silu_lets_a_few_images_spike(committed):
@@ -180,5 +196,7 @@ def test_claim_relu6_bounds_mobilenet_features_while_silu_lets_a_few_images_spik
 def test_claim_accuracy_stays_almost_level_while_the_loss_swings(committed):
     efficient = committed["efficientnetb0_64"]
     raw = _head(efficient, efficient["configured_lr"])
-    assert raw["val_acc_sd"] < 0.02
-    assert raw["val_loss_sd"] / raw["val_loss_mean"] > raw["val_acc_sd"] / raw["val_acc_mean"]
+    assert raw["val_acc_sd_mean"] < 0.02
+    relative_loss_swing = raw["val_loss_sd_mean"] / raw["val_loss_mean_mean"]
+    relative_accuracy_swing = raw["val_acc_sd_mean"] / raw["val_acc_mean_mean"]
+    assert relative_loss_swing > 5 * relative_accuracy_swing

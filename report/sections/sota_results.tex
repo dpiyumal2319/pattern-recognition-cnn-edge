@@ -118,22 +118,30 @@ both networks are smooth and settle within a few epochs.
 The noise in the frozen EfficientNet-B0 curves comes from its fixed features,
 not from a training fault. While its validation loss swings from epoch to
 epoch, its validation accuracy stays almost level, so the predicted classes
-barely change; what changes is the confidence given to the many images that
-the frozen features do not separate. Cross-entropy penalises a confidently
-wrong prediction heavily, so small updates to the prediction layer move the
-loss on these borderline images far more than they move the accuracy.
-MobileNetV2's frozen features leave fewer such images, and its loss is lower
-and flatter. The two backbones also end in different activations.
-EfficientNet-B0 uses the unbounded SiLU (Swish)
+barely change; what moves is the confidence the prediction layer assigns. Two
+properties of the frozen features are involved. First, they separate EuroSAT
+less well than MobileNetV2's, which is why the frozen EfficientNet-B0 loss sits
+higher and its accuracy lower. Second, the two backbones end in different
+activations. EfficientNet-B0 uses the unbounded SiLU (Swish)
 activation~\cite{tan2019efficientnet}, and a small fraction of images produce
-very large pooled features. MobileNetV2's ReLU6 caps every feature at
-six~\cite{sandler2018mobilenetv2}, the bounded behaviour discussed in
-Section~\ref{sec:activation-choice}. The activation range is a secondary
-factor, however. In a diagnostic check that retrained only the prediction
-layer on fixed features, standardising those features reduced the
-fluctuation only slightly. Learning rates of $3\times10^{-4}$ and $10^{-4}$
-did not remove it either, so the frozen-head learning rate is not the cause.
-The practical cost lies in checkpoint selection. On a noisy validation curve
+pooled features in the hundreds, where typical values are below one.
+MobileNetV2's ReLU6 caps every feature at six~\cite{sandler2018mobilenetv2},
+the bounded behaviour discussed in Section~\ref{sec:activation-choice}. A
+small update to the prediction layer then moves the logits of those few images
+by a large amount, and with them the loss.
+
+A diagnostic separates the two effects. It retrains only the prediction layer
+on the fixed features, with three seeds per setting
+(\texttt{scripts/diagnose\_frozen\_head.py}, output in
+\texttt{results/frozen\_head\_diagnostic/}). At learning rates of
+$3\times10^{-4}$ and $10^{-4}$, EfficientNet-B0 stayed noisier than MobileNetV2
+at the same rate, so the frozen-head learning rate is not the cause.
+Standardising each feature removes the scale of the large activations. It
+roughly halved EfficientNet-B0's fluctuation, to the level of a standardised
+MobileNetV2 head, while its loss stayed more than twice as high and its
+accuracy several points lower. The unbounded activation range therefore
+accounts for most of the extra noise, and the weaker feature separation for
+the higher loss. The practical cost lies in checkpoint selection. On a noisy validation curve
 the lowest-loss epoch is partly a matter of chance, and it need not be the
 run's most accurate epoch. Fine-tuning removes the effect because the backbone
 adapts its features to EuroSAT, which is one more reason the comparison in

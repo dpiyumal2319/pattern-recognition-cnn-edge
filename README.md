@@ -67,7 +67,7 @@ and any generated table or figure that does not exist yet renders as a red
 
 The Task 5 explanation of the noisy frozen EfficientNet-B0 curves rests on a
 diagnostic that retrains only the prediction layer on fixed backbone features.
-It needs the prepared dataset and about ten minutes on a CPU, and writes
+It needs the prepared dataset and about 25 minutes on a CPU, and writes
 `results/frozen_head_diagnostic/diagnostic.json`:
 
 ```bash
