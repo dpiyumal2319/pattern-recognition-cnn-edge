@@ -95,32 +95,30 @@ disk than Model~B (Table~\ref{tab:custom-comparison}). Whether the extra accurac
 question Section~\ref{sec:task6} answers.
 
 The training curves (Figures~\ref{fig:sota-loss}--\ref{fig:efficientnet-224-loss})
-show the split between the two strategies for both networks. Each frozen
-run levels off at a clearly higher loss than its fine-tuned partner. At
-$64\times64$ the frozen runs' training and validation losses stay close
-together. The frozen
-EfficientNet-B0 curves are also visibly noisier than MobileNetV2's: after the
+show the difference between the two strategies for both networks. Each frozen
+run levels off at a higher loss than its fine-tuned counterpart. The frozen
+EfficientNet-B0 curves are also visibly noisier than MobileNetV2's. After the
 first few epochs both of its losses fluctuate instead of
 settling, and at $224\times224$ the lowest validation loss happens to fall early,
 so its selected checkpoint comes early in the run. The fine-tuned curves of
 both networks are smooth and settle within a few epochs.
 
-The noise in the frozen EfficientNet-B0 curves comes from its fixed features,
+The noise in the frozen EfficientNet-B0 curves comes from its fixed feature extraction,
 not from a training fault. While its validation loss swings from epoch to
 epoch, its validation accuracy stays almost level, so the predicted classes
-barely change; what changes is the confidence given to the many images that
-the frozen features do not separate. Cross-entropy penalises a confidently
+barely change. What changes instead is actually the confidence given to the images that
+the frozen feature layers are unable to separate. Cross-entropy penalises a confidently
 wrong prediction heavily, so small updates to the prediction layer move the
 loss on these borderline images far more than they move the accuracy.
-MobileNetV2's frozen features leave fewer such images, and its loss is lower
+MobileNetV2's frozen features have fewer misclassified images, and its loss is lower
 and flatter. The two backbones also end in different activations.
 EfficientNet-B0 uses the unbounded SiLU (Swish)
-activation~\cite{tan2019efficientnet}, and a small fraction of images produce
+activation~\cite{tan2019efficientnet}, so a small fraction of images produce
 very large pooled features. 
 MobileNetV2's ReLU6 caps every feature at
-six~\cite{sandler2018mobilenetv2}, the bounded behaviour discussed in
-Section~\ref{sec:activation-choice}. In a diagnostic check that retrained only the prediction
-layer on fixed features, standardising those features reduced the
+six~\cite{sandler2018mobilenetv2}. This bounded behaviour is discussed in
+Section~\ref{sec:activation-choice}. In a diagnostic check which retrained only the prediction
+layer, standardising those features reduced the
 fluctuation only slightly. Learning rates of $3\times10^{-4}$ and $10^{-4}$
 did not remove it either, so the frozen backbone learning rate is not the cause.
 The practical cost lies in checkpoint selection. On a noisy validation curve
@@ -132,10 +130,10 @@ Section~\ref{sec:task6} uses the fine-tuned runs.
 The confusion matrices of the fine-tuned $64\times64$ models
 (Figures~\ref{fig:mobilenetv2-confusion} and~\ref{fig:efficientnet-confusion})
 place the remaining errors in the same few class pairs for both networks.
-Highway and River are confused in both directions; at $64\times64$ both are
-thin linear features a few pixels wide. The agricultural and vegetation
+Highway and River are confused in both directions, possibly because at $64\times64$ both are
+thin features a few pixels wide. The agricultural and vegetation
 classes (AnnualCrop, PermanentCrop, Pasture and HerbaceousVegetation), which
-differ mainly in texture, account for a large share of the rest.
+differ mainly in texture, account for a large share of the rest of the errors.
 
 \begin{figure}[htbp]
   \centering
