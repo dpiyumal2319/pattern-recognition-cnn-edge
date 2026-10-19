@@ -1,106 +1,87 @@
 \subsection{Hardware-aware activation-function choice}
 \label{sec:activation-choice}
 
-Models A and B use the rectified linear unit (ReLU),
-$f(x)=\max(0,x)$, after every convolutional stage and hidden fully connected
-layer.  ReLU provides computationally efficient thresholding and does not
-saturate for positive inputs.  Its limitations are that negative units have zero gradient
-and can become ``dying ReLUs'', and the output is not zero-centred.  These are
-training risks, but neither changes the inference operation: compare with zero
-and retain either zero or the input value.
+Models A and B use ReLU, $f(x)=\max(0,x)$, after each convolutional stage and
+hidden fully connected layer.  It passes positive values unchanged and sets
+negative values to zero.  Positive inputs do not saturate.  Negative inputs
+have zero gradient, so a unit can stop learning if it remains inactive
+(the dying-ReLU problem).  ReLU outputs are also not zero-centred.
 
-The hardware consequence is substantial because activation cost is paid for
-every feature value, not once per layer.  From the implemented output shapes,
-each custom model evaluates
+Each model applies ReLU to
 \begin{equation}
   32(62^2)+64(29^2)+128(12^2)+128+64=195{,}456
 \end{equation}
-hidden activation values per image.  Arm's CMSIS-NN Q7 reference ReLU implements
-each scalar as a negative comparison followed by assignment of zero; on
-DSP-capable M-profile cores its vector path masks four signed 8-bit values per
-loop iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
+hidden values per image.  Arm's CMSIS-NN Q7 reference implementation compares
+each scalar with zero and assigns zero to negative values.  On DSP-capable
+M-profile cores, its vector path masks four signed 8-bit values per loop
+iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_relu\_q7.c}}, lines 50--101,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_relu_q7.c}.}
-Thus ``one comparison'' describes the logical arithmetic, although real cycle
-counts also include loads, stores and loop control and depend on the core and
-compiler.  ReLU needs no coefficients, transcendental unit or lookup table.
+The arithmetic requires no coefficients or lookup table.  Loads, stores and
+loop control still contribute to the cycle count, which depends on the core
+and compiler.
 
-Sigmoid and tanh are less attractive here for both learning and deployment.
-Their definitions,
+Sigmoid and tanh require exponentials or an approximation:
 \begin{equation}
   \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
   \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
 \end{equation}
-require exponential evaluation or an approximation.  Both saturate, producing near-zero gradients at the
-extremes.  A representative embedded alternative illustrates the memory--time
-trade-off: CMSIS-NN implements 16-bit sigmoid and tanh using a
-256-entry \texttt{uint16\_t} sigmoid table.  Non-saturated inputs use two table reads and integer
-interpolation; inputs outside the table range use a saturation branch.  The table alone occupies $256\times2=512$ bytes of read-only memory,
+Both functions saturate at extreme inputs, where their gradients approach
+zero.  In CMSIS-NN, the 16-bit implementations use a 256-entry
+\texttt{uint16\_t} sigmoid table.  Inputs within its range need two table
+reads and integer interpolation; inputs outside the range take a saturation
+branch.  The table occupies $256\times2=512$ bytes of read-only memory,
 before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_nn\_activation\_s16.c}}, lines 51--117, and
 \texttt{arm\_nn\_tables.h}, line 40,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_nn_activation_s16.c},
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Include/arm_nn_tables.h}.}
-Using either function at all hidden sites would therefore require 195,456
-lookup/interpolation or saturation evaluations per image instead of applying
-a threshold.  These integer kernels illustrate possible embedded costs;
-they are not the floating-point PyTorch kernels used in our experiments.
+Using these functions at every hidden site would require 195,456 such
+evaluations per image.  These integer kernels are examples of embedded
+implementations; our experiments use floating-point PyTorch kernels.
 
-Floating-point support also depends on the target core.  Arm describes the
-Cortex-M4/M7 floating-point unit as optional and contrasts hardware floating
-point with emulation using integer operations.\footnote{Arm Ltd.,
+Core support also affects floating-point cost.  Arm describes the Cortex-M4/M7
+FPU as optional and compares hardware floating point with emulation using
+integer operations.\footnote{Arm Ltd.,
 \emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
 \url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
-This supports avoiding unnecessary floating-point transcendental operations;
-it does not provide a measured activation latency for our models.  No
-microcontroller inference benchmark was performed.
+The activation comparison here is analytical.  We did not measure
+microcontroller inference latency.
 
-GELU was also rejected.  Its exact form $x\Phi(x)$ uses the Gaussian cumulative
-distribution (equivalently an error function), while its common approximation
-uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
+GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution
+(equivalently an error function); its common approximation uses tanh.\footnote{D. Hendrycks and
 K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
 \url{https://arxiv.org/abs/1606.08415}.}
-Leaky ReLU and PReLU are computationally efficient alternatives that
-retain a nonzero negative-side gradient when the slope is nonzero, but
-require a multiply on the negative branch; PReLU additionally stores and learns the slope $\alpha$.
-Without evidence that dying ReLUs impair these models, those extra operations
-and parameters are not justified.
+Leaky ReLU and PReLU keep a nonzero gradient on the negative branch when the
+slope is nonzero, at the cost of a multiply on that branch.  PReLU also learns
+and stores the slope $\alpha$.  We chose ReLU for its simpler inference
+operation.  We did not compare activation functions experimentally.
 
 \subsubsection{ReLU6 and low-precision deployment}
 
 MobileNetV2 uses
-$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because the bounded activation is
-robust under low-precision computation.\footnote{M. Sandler et al.,
+$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ for its robustness in low-precision
+computation.\footnote{M. Sandler et al.,
 \emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
 \url{https://arxiv.org/abs/1801.04381}.}
-The upper bound prevents rare large activations from expanding the represented
-range, so a fixed number of integer levels can cover the useful interval more
-densely.  This is directly relevant to int8 deployment and explains why Arm
-CMSIS-NN provides a dedicated signed-8-bit ReLU6 operator.  However, this
-project makes the edge argument analytically and does not perform
-quantisation.  The custom models are trained and evaluated in floating point,
-so imposing an upper saturation at six would discard positive magnitude
-without delivering a required int8 benefit.  Ordinary ReLU therefore matches
-the present deployment scope; ReLU6 is a
-future quantised-deployment option rather than the chosen activation.
+The upper bound limits the represented range, allowing integer levels to be
+spaced more closely within it.  CMSIS-NN provides a signed-8-bit ReLU6
+operator.  Our custom models use floating point, and quantisation is outside
+this project's scope.  We kept ordinary ReLU so that values above six remain
+available to the next layer.
 
-\subsubsection{The softmax exception}
+\subsubsection{Output probabilities}
 
-The ten-class output is the one place where exponentials are justified when
-normalised probabilities are required:
+Softmax converts the ten output logits to normalised probabilities:
 \begin{equation}
   p(y=C_k\mid x)=\frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}.
 \end{equation}
-This softmax is evaluated once over ten logits: ten exponentials per image,
-not once over a feature map.  Replacing all hidden ReLUs by an exponential-based
-activation would apply the expensive operation to 195,456 values, approximately
-19,546 times as many values as the output softmax.
+This requires ten exponentials per image.  Applying an exponential-based
+activation to all 195,456 hidden values would involve approximately
+19,546 times as many values.
 
-The PyTorch models deliberately return raw logits.  During training,
-\texttt{CrossEntropyLoss} consumes those logits directly, avoiding a separate
-softmax layer.  During inference, softmax is needed only when normalised class
-probabilities must be reported; softmax alone does not establish calibration.
-For classification, the predicted class itself is the index of the
-largest logit because softmax preserves ordering.  Consequently, the necessary
-probability normalisation is confined to a ten-value output stage,
-while the high-volume hidden activations retain the comparison-only ReLU.
+The models return raw logits to \texttt{CrossEntropyLoss} during training.
+At inference, the class prediction is the index of the largest logit;
+softmax preserves this ordering.  Softmax is needed only to report
+normalised probabilities, and it does not by itself establish calibration.
+The hidden layers use ReLU throughout.

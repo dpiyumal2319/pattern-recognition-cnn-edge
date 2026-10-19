@@ -125,20 +125,21 @@
 \subsection{Custom architecture design}
 \label{sec:custom-architecture}
 
-Both custom networks accept a $64\times64$ RGB image and produce ten class
-logits.  Each feature-extraction
-stage uses a valid (unpadded), stride--1 $3\times3$ convolutional
-operation, ReLU, and $2\times2$ stride--2 max pooling.  Thus the spatial sequence is
+Both custom networks take a $64\times64$ RGB image and output ten class
+logits.  Each feature-extraction stage uses a valid (unpadded), stride--1
+$3\times3$ convolutional operation, ReLU, and $2\times2$ stride--2 max pooling.
+The spatial sizes are
 $64\rightarrow62\rightarrow31\rightarrow29\rightarrow14\rightarrow12
-\rightarrow6$.  Both networks use channel widths 32, 64, and 128 and hidden
-fully connected widths 128 and 64.  This holds the representation widths fixed
-so that the resource difference comes from two deliberate substitutions:
-standard convolution by depthwise separable convolution, and flattening by
-global average pooling (GAP).  Both models use biases in all convolutional
-and dense layers, no batch normalisation, and dropout with probability 0.2
-immediately before each hidden dense layer during training.  Dropout is
-disabled for validation and inference.  The final dense layer returns logits
-without a ReLU or softmax.
+\rightarrow6$.  Both networks have channel widths 32, 64, and 128 and hidden
+fully connected widths 128 and 64.  Model B replaces Model A's standard
+convolutions with depthwise separable convolutions and its flattened head
+with global average pooling (GAP).
+
+All convolutional and dense layers have biases.  Neither model uses batch
+normalisation.  During training, dropout with probability 0.2 is applied
+immediately before each hidden dense layer.  It is disabled for validation
+and inference.  The final dense layer outputs logits without a ReLU or
+softmax.
 
 A standard convolution has
 \begin{equation}
@@ -160,9 +161,9 @@ operations are also outside the reported MAC total.
 
 \subsubsection{Model A: standard CNN}
 
-Model A preserves all $128\times6\times6=4{,}608$ final feature values before
-the first dense layer.  Table~\ref{tab:model-a-hand-derivation} shows that this
-flattened head, rather than the convolutions, dominates its parameter count.
+Model A flattens the final feature map into $128\times6\times6=4{,}608$
+values for the first dense layer.  The layer counts are derived in
+Table~\ref{tab:model-a-hand-derivation}.
 
 \begin{table}[htbp]
   \centering
@@ -195,20 +196,16 @@ flattened head, rather than the convolutions, dominates its parameter count.
   }
 \end{table}
 
-The convolutional stack contributes $93{,}248$ parameters, whereas the dense
-head contributes $598{,}858$ ($86.5\%$ of the total).  This is why retaining a
-flattened head is useful for Model A as a deliberately resource-heavy baseline,
-but unsuitable for the constrained model.
+The convolutional stack has $93{,}248$ parameters.  The dense head accounts
+for $598{,}858$ ($86.5\%$ of the total), so reducing the head is necessary to
+meet Model B's parameter budget.
 
 \subsubsection{Model B: depthwise separable CNN}
 
 For each Model B stage, the depthwise step applies one $3\times3$ filter to
 each input channel and the pointwise $1\times1$ step mixes those channels.
-ReLU follows the pointwise step; there is no activation between the
-depthwise and pointwise convolutions.  The two rows are kept separate in
-Table~\ref{tab:model-b-hand-derivation} to show the cost of each step.
-GAP reduces the $128\times6\times6$ tensor to 128 channel means before the
-dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
+Each stage has one ReLU, after the pointwise step.  The two convolutions
+are listed separately in Table~\ref{tab:model-b-hand-derivation}.
 
 \begin{table}[htbp]
   \centering
@@ -248,12 +245,15 @@ dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
   }
 \end{table}
 
+GAP reduces the $128\times6\times6$ tensor to 128 channel means before the
+dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
+
 The separable blocks contain $11{,}550$ parameters and the GAP-based dense
-head contains $25{,}418$, placing Model B $63{,}032$ parameters below the
-100,000-parameter constraint.  A flattened Model B would retain the
-$589{,}952$-parameter first dense layer and would therefore fail the budget;
-narrowing all feature channels was rejected because it would also reduce the
-feature extractor's representational width.
+head contains $25{,}418$.  Model B is $63{,}032$ parameters below the
+100,000-parameter limit.  Keeping a flattened head would leave a
+$589{,}952$-parameter first dense layer, already over budget.  GAP lets us
+keep the feature-channel widths; narrowing the channels would also reduce
+the capacity of the feature extractor.
 
 \subsubsection{Compute saving and profiler cross-check}
 
@@ -283,125 +283,104 @@ $9\times256+256\times256=67{,}840$, giving an $8.69\times$ reduction.
   \end{tabular}
 \end{table}
 
-Including the different classifier heads, Model B uses $18.72\times$ fewer
-trainable parameters (a $94.66\%$ reduction) and $8.06\times$ fewer MACs per
-image (an $87.60\%$ reduction) than Model A.  These are arithmetic savings,
-not measured inference speedups: memory traffic, kernel support, and the
-operations omitted from the MAC count also affect latency.  Finally, the hand-derived totals
-were evaluated independently with the forward-hook profiler: the generated
-profile values were exactly $692{,}106$ parameters and
-$30{,}038{,}016$ MACs for Model A, and $36{,}968$ parameters and $3{,}725{,}196$
-MACs for Model B.  The zero discrepancies show that the tables describe the
-implemented networks rather than an idealised architecture.
+Including the classifier heads, Model B uses $18.72\times$ fewer trainable
+parameters (a $94.66\%$ reduction) and $8.06\times$ fewer MACs per image
+(an $87.60\%$ reduction) than Model A.  Actual inference time also depends on
+memory traffic, kernel support, and operations omitted from the MAC count.
+
+The forward-hook profiler gives $692{,}106$ parameters and $30{,}038{,}016$
+MACs for Model A, and $36{,}968$ parameters and $3{,}725{,}196$ MACs for
+Model B.  Both totals agree with the hand derivations.
 
 % END architecture
 % BEGIN activations
 \subsection{Hardware-aware activation-function choice}
 \label{sec:activation-choice}
 
-Models A and B use the rectified linear unit (ReLU),
-$f(x)=\max(0,x)$, after every convolutional stage and hidden fully connected
-layer.  ReLU provides computationally efficient thresholding and does not
-saturate for positive inputs.  Its limitations are that negative units have zero gradient
-and can become ``dying ReLUs'', and the output is not zero-centred.  These are
-training risks, but neither changes the inference operation: compare with zero
-and retain either zero or the input value.
+Models A and B use ReLU, $f(x)=\max(0,x)$, after each convolutional stage and
+hidden fully connected layer.  It passes positive values unchanged and sets
+negative values to zero.  Positive inputs do not saturate.  Negative inputs
+have zero gradient, so a unit can stop learning if it remains inactive
+(the dying-ReLU problem).  ReLU outputs are also not zero-centred.
 
-The hardware consequence is substantial because activation cost is paid for
-every feature value, not once per layer.  From the implemented output shapes,
-each custom model evaluates
+Each model applies ReLU to
 \begin{equation}
   32(62^2)+64(29^2)+128(12^2)+128+64=195{,}456
 \end{equation}
-hidden activation values per image.  Arm's CMSIS-NN Q7 reference ReLU implements
-each scalar as a negative comparison followed by assignment of zero; on
-DSP-capable M-profile cores its vector path masks four signed 8-bit values per
-loop iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
+hidden values per image.  Arm's CMSIS-NN Q7 reference implementation compares
+each scalar with zero and assigns zero to negative values.  On DSP-capable
+M-profile cores, its vector path masks four signed 8-bit values per loop
+iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_relu\_q7.c}}, lines 50--101,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_relu_q7.c}.}
-Thus ``one comparison'' describes the logical arithmetic, although real cycle
-counts also include loads, stores and loop control and depend on the core and
-compiler.  ReLU needs no coefficients, transcendental unit or lookup table.
+The arithmetic requires no coefficients or lookup table.  Loads, stores and
+loop control still contribute to the cycle count, which depends on the core
+and compiler.
 
-Sigmoid and tanh are less attractive here for both learning and deployment.
-Their definitions,
+Sigmoid and tanh require exponentials or an approximation:
 \begin{equation}
   \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
   \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
 \end{equation}
-require exponential evaluation or an approximation.  Both saturate, producing near-zero gradients at the
-extremes.  A representative embedded alternative illustrates the memory--time
-trade-off: CMSIS-NN implements 16-bit sigmoid and tanh using a
-256-entry \texttt{uint16\_t} sigmoid table.  Non-saturated inputs use two table reads and integer
-interpolation; inputs outside the table range use a saturation branch.  The table alone occupies $256\times2=512$ bytes of read-only memory,
+Both functions saturate at extreme inputs, where their gradients approach
+zero.  In CMSIS-NN, the 16-bit implementations use a 256-entry
+\texttt{uint16\_t} sigmoid table.  Inputs within its range need two table
+reads and integer interpolation; inputs outside the range take a saturation
+branch.  The table occupies $256\times2=512$ bytes of read-only memory,
 before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_nn\_activation\_s16.c}}, lines 51--117, and
 \texttt{arm\_nn\_tables.h}, line 40,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_nn_activation_s16.c},
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Include/arm_nn_tables.h}.}
-Using either function at all hidden sites would therefore require 195,456
-lookup/interpolation or saturation evaluations per image instead of applying
-a threshold.  These integer kernels illustrate possible embedded costs;
-they are not the floating-point PyTorch kernels used in our experiments.
+Using these functions at every hidden site would require 195,456 such
+evaluations per image.  These integer kernels are examples of embedded
+implementations; our experiments use floating-point PyTorch kernels.
 
-Floating-point support also depends on the target core.  Arm describes the
-Cortex-M4/M7 floating-point unit as optional and contrasts hardware floating
-point with emulation using integer operations.\footnote{Arm Ltd.,
+Core support also affects floating-point cost.  Arm describes the Cortex-M4/M7
+FPU as optional and compares hardware floating point with emulation using
+integer operations.\footnote{Arm Ltd.,
 \emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
 \url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
-This supports avoiding unnecessary floating-point transcendental operations;
-it does not provide a measured activation latency for our models.  No
-microcontroller inference benchmark was performed.
+The activation comparison here is analytical.  We did not measure
+microcontroller inference latency.
 
-GELU was also rejected.  Its exact form $x\Phi(x)$ uses the Gaussian cumulative
-distribution (equivalently an error function), while its common approximation
-uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
+GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution
+(equivalently an error function); its common approximation uses tanh.\footnote{D. Hendrycks and
 K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
 \url{https://arxiv.org/abs/1606.08415}.}
-Leaky ReLU and PReLU are computationally efficient alternatives that
-retain a nonzero negative-side gradient when the slope is nonzero, but
-require a multiply on the negative branch; PReLU additionally stores and learns the slope $\alpha$.
-Without evidence that dying ReLUs impair these models, those extra operations
-and parameters are not justified.
+Leaky ReLU and PReLU keep a nonzero gradient on the negative branch when the
+slope is nonzero, at the cost of a multiply on that branch.  PReLU also learns
+and stores the slope $\alpha$.  We chose ReLU for its simpler inference
+operation.  We did not compare activation functions experimentally.
 
 \subsubsection{ReLU6 and low-precision deployment}
 
 MobileNetV2 uses
-$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because the bounded activation is
-robust under low-precision computation.\footnote{M. Sandler et al.,
+$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ for its robustness in low-precision
+computation.\footnote{M. Sandler et al.,
 \emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
 \url{https://arxiv.org/abs/1801.04381}.}
-The upper bound prevents rare large activations from expanding the represented
-range, so a fixed number of integer levels can cover the useful interval more
-densely.  This is directly relevant to int8 deployment and explains why Arm
-CMSIS-NN provides a dedicated signed-8-bit ReLU6 operator.  However, this
-project makes the edge argument analytically and does not perform
-quantisation.  The custom models are trained and evaluated in floating point,
-so imposing an upper saturation at six would discard positive magnitude
-without delivering a required int8 benefit.  Ordinary ReLU therefore matches
-the present deployment scope; ReLU6 is a
-future quantised-deployment option rather than the chosen activation.
+The upper bound limits the represented range, allowing integer levels to be
+spaced more closely within it.  CMSIS-NN provides a signed-8-bit ReLU6
+operator.  Our custom models use floating point, and quantisation is outside
+this project's scope.  We kept ordinary ReLU so that values above six remain
+available to the next layer.
 
-\subsubsection{The softmax exception}
+\subsubsection{Output probabilities}
 
-The ten-class output is the one place where exponentials are justified when
-normalised probabilities are required:
+Softmax converts the ten output logits to normalised probabilities:
 \begin{equation}
   p(y=C_k\mid x)=\frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}.
 \end{equation}
-This softmax is evaluated once over ten logits: ten exponentials per image,
-not once over a feature map.  Replacing all hidden ReLUs by an exponential-based
-activation would apply the expensive operation to 195,456 values, approximately
-19,546 times as many values as the output softmax.
+This requires ten exponentials per image.  Applying an exponential-based
+activation to all 195,456 hidden values would involve approximately
+19,546 times as many values.
 
-The PyTorch models deliberately return raw logits.  During training,
-\texttt{CrossEntropyLoss} consumes those logits directly, avoiding a separate
-softmax layer.  During inference, softmax is needed only when normalised class
-probabilities must be reported; softmax alone does not establish calibration.
-For classification, the predicted class itself is the index of the
-largest logit because softmax preserves ordering.  Consequently, the necessary
-probability normalisation is confined to a ten-value output stage,
-while the high-volume hidden activations retain the comparison-only ReLU.
+The models return raw logits to \texttt{CrossEntropyLoss} during training.
+At inference, the class prediction is the index of the largest logit;
+softmax preserves this ordering.  Softmax is needed only to report
+normalised probabilities, and it does not by itself establish calibration.
+The hidden layers use ReLU throughout.
 
 % END activations
 \clearpage
@@ -411,52 +390,41 @@ while the high-volume hidden activations retain the comparison-only ReLU.
 \subsection{Optimizer comparison protocol}
 \label{sec:optimizer-comparison}
 
-The optimizer comparison uses Model~B under three configurations: Adam with
-$\alpha=10^{-3}$, plain stochastic gradient descent (SGD) with
-$\alpha=10^{-2}$, and SGD with the same learning rate and momentum $m=0.9$.
-Only the optimizer block changes; the model, split manifest, random seed, data
-order, batch size, augmentation, epoch budget, and execution device are held
-constant.  The sweep checks the planned configuration equality before
-training.  The committed Adam run records \texttt{device: auto}, whereas the
-SGD runs record \texttt{device: cuda}; their profiles confirm the same
-effective Tesla T4 device.  All use seed 42, batch size 128, 30 epochs,
-zero weight decay, and a fixed learning rate without a scheduler.
+We trained Model~B with Adam at $\alpha=10^{-3}$, plain stochastic gradient
+descent (SGD) at $\alpha=10^{-2}$, and SGD at the same learning rate with
+momentum $m=0.9$.  The model, split manifest, seed, data order, batch size and
+augmentation were the same across runs.  Each run used seed 42, batch size
+128, 30 epochs, zero weight decay, and a fixed learning rate without a
+scheduler.  The sweep checks these shared settings before training.  The
+saved Adam configuration uses \texttt{device: auto} and the SGD configurations
+use \texttt{device: cuda}; all three profiles record a Tesla T4.
 
-The SGD update is
+SGD updates the weights by
 \begin{equation}
   w \leftarrow w-\alpha\frac{\partial L(w)}{\partial w},
 \end{equation}
-while momentum adds a velocity term,
+With momentum, the update is
 \begin{equation}
   v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
   \qquad w \leftarrow w+v.
 \end{equation}
-The momentum value $0.9$ is therefore compared against $m=0$ without changing
-SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
-rate rather than forcing all optimizers to share a numerically equal step
-size: Adam adapts each parameter's step using running first and second moments
-of the gradients, whereas SGD uses the same fixed learning-rate scale for
-every parameter.  The implementation uses Adam's default coefficients
-$\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$.  The selected
-starting values, $10^{-3}$ for Adam and
-$10^{-2}$ for SGD, are conventional baselines for this comparison and are
-recorded in the resolved configuration of every run.  This compares three
-specified optimizer configurations, not each optimizer after an equally
-exhaustive learning-rate search.  With one seed per configuration, the
-observed ranking is evidence for this training budget, not a general claim
-that Adam outperforms tuned SGD.
+Comparing $m=0$ and $m=0.9$ at the same SGD learning rate isolates the effect
+of momentum.  Adam uses running first and second moments of the gradients
+to scale each parameter's step.  We used its default coefficients,
+$\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$.
 
-Adam at $\alpha=10^{-3}$ is selected for the final custom-model runs.  As shown
-in Table~\ref{tab:optimizer-comparison}, it achieved the lowest validation loss
-and the highest validation accuracy at the selected checkpoint and test
-accuracy among these three configurations.  Momentum made SGD competitive
-relative to plain SGD within this budget; accumulating past gradients can
-maintain progress in consistent descent directions.  Plain SGD converged
-much more slowly within the same 30-epoch budget.  The choice is based on validation loss rather than test
-accuracy, and the reported test accuracies are used only for final evaluation.
-Each run uses the same lowest-validation-loss checkpoint rule, so its
-reported metrics refer to the selected checkpoint rather than a potentially
-poorer final epoch.
+The learning rates $10^{-3}$ for Adam and $10^{-2}$ for SGD were starting
+values for this comparison.  We did not run a learning-rate search for each
+optimizer.  The results therefore apply to these configurations and this
+training budget; each configuration was tested with one seed.
+
+We selected Adam at $\alpha=10^{-3}$ for the custom-model runs because it
+had the lowest validation loss (Table~\ref{tab:optimizer-comparison}).  It
+also had the highest selected-checkpoint validation accuracy and test
+accuracy among the three runs.  SGD with momentum reduced validation loss
+faster than plain SGD over the 30 epochs.  For every run, the reported
+metrics come from the lowest-validation-loss checkpoint.  Test accuracy
+was used only for final evaluation.
 
 \begin{table}[htbp]
   \centering
@@ -482,49 +450,37 @@ poorer final epoch.
 \subsection{Effect of the momentum coefficient}
 \label{sec:momentum-ablation}
 
-To isolate the effect of momentum, Model~B was trained with SGD at the fixed
-learning rate $\alpha=10^{-2}$ for $m\in\{0,0.5,0.9,0.99\}$.  Every other
-resolved setting---including the split, seed, data order, augmentation, batch
-size, initialization, and 30-epoch budget---was identical.  All four runs were
-also timed on the same NVIDIA GeForce RTX~3060 Laptop GPU, so device variation
-cannot explain the differences within Figure~\ref{fig:momentum-ablation}.
-These are the separate \texttt{momentum\_m000}, \texttt{momentum\_m050},
-\texttt{momentum\_m090}, and \texttt{momentum\_m099} runs, not the T4
-runs in Table~\ref{tab:optimizer-comparison}; epoch times must not be
-compared across these two device groups.
+We compared SGD with $m\in\{0,0.5,0.9,0.99\}$ at the fixed learning
+rate $\alpha=10^{-2}$.  The split, seed, data order, augmentation, batch size,
+initialisation and 30-epoch budget were identical.  All four runs used an
+NVIDIA GeForce RTX~3060 Laptop GPU.  Figure~\ref{fig:momentum-ablation}
+uses the separate \texttt{momentum\_m000}, \texttt{momentum\_m050},
+\texttt{momentum\_m090}, and \texttt{momentum\_m099} records.  Their epoch
+times cannot be compared directly with the T4 runs in
+Table~\ref{tab:optimizer-comparison}.
 
-The momentum update,
+In the momentum update,
 \begin{equation}
   v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
   \qquad w \leftarrow w+v,
   \label{eq:momentum-update}
 \end{equation}
-shows that $m$ controls how much of the previous velocity survives.  When
-successive gradients have a consistent sign, their contributions accumulate
-in $v$, increasing progress along that direction.  Across a narrow loss
-ravine, gradient components that alternate sign instead cancel part of the
-stored velocity, damping side-to-side oscillation while preserving progress
-along the ravine.
+$m$ determines how much of the previous velocity is kept.  Gradients with a
+consistent sign accumulate in $v$, increasing movement in that direction.
+Across a narrow loss ravine, alternating gradient components cancel part of
+the stored velocity, damping side-to-side motion.
 
-The validation curves are consistent with faster convergence from momentum,
-but do not measure gradient directions or velocity directly.  With $m=0$,
-Equation~\ref{eq:momentum-update} has no memory and validation loss remains high within the epoch budget.
-Setting $m=0.5$ provides some carry-over and converges faster, but still leaves
-substantial loss after 30 epochs.  The $m=0.9$ run descends with only small epoch-to-epoch fluctuations and reaches
-the lowest validation loss, making it the preferred momentum setting under the
-fixed budget.  At $m=0.99$, validation loss falls fastest initially but
-fluctuates during later epochs and finishes above its selected minimum.  Retaining more past velocity
-is a plausible explanation for this behaviour, but these loss curves alone
-do not establish that individual updates overshot a local minimum.
-Although that run happens to obtain a slightly higher test accuracy, it is not
-selected on the test split; optimizer selection uses validation loss to avoid
-biasing the final evaluation.
+With $m=0$, the update has no memory and validation loss stays high over the
+epoch budget.  At $m=0.5$, loss falls sooner but is still high after 30 epochs.
+At $m=0.9$, validation loss falls with small epoch-to-epoch fluctuations
+and reaches the lowest value.  At $m=0.99$, loss falls fastest initially,
+then fluctuates during later epochs and finishes above its selected minimum.
+Keeping more past velocity could explain these fluctuations, but the saved
+loss curves do not record gradient directions or establish overshooting.
 
-Thus momentum is not simply ``more is better'': too little fails to exploit
-consistent gradients, while too much retains stale velocity and can destabilise
-convergence.  Among these four single-seed runs at the fixed learning rate,
-$m=0.9$ attains the lowest validation loss.  Repeated runs would be needed to assess
-the stability of this ranking across random seeds.
+We selected $m=0.9$ by validation loss.  The slightly higher test accuracy
+at $m=0.99$ did not affect that choice.  This ranking is based on one run per
+setting; its consistency across random seeds has not been measured.
 
 \begin{figure}[H]
   \centering
@@ -542,14 +498,11 @@ the stability of this ranking across random seeds.
 \section{Generated Layer Tables}
 \label{app:layer-tables}
 
-The per-layer tables below are produced by
-\texttt{scripts/build\_tables.py} directly from the model definitions, by a
-forward pass of one $64\times64$ image. They are the machine-generated
-counterpart of the hand derivations in Section~\ref{sec:task2}: every
-parameter count there must match the corresponding row here.  Only the
-shape-changing and parameter-bearing operations are listed; the ReLU and
-dropout operations described in Section~\ref{sec:custom-architecture} are
-omitted from these summaries, not from the implemented networks.
+\texttt{scripts/build\_tables.py} generates these tables from a forward
+pass of one $64\times64$ image through each model.  The parameter counts
+agree with the hand derivations in Section~\ref{sec:task2}.  The tables list
+shape-changing and parameter-bearing operations.  ReLU and dropout are
+omitted; their placement is described in Section~\ref{sec:custom-architecture}.
 
 \begin{table}[H]
   \centering
