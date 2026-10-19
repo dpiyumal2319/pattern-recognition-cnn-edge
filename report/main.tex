@@ -184,6 +184,8 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \input{sections/data_preparation}   % #3:  normalisation, augmentation, sample grid
 
 % =========================================================================
+% Flush the data-section figure before beginning the architecture review scope.
+\clearpage
 \section{Task 2: Custom Architecture Design}
 \label{sec:task2}
 
@@ -191,6 +193,7 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \input{sections/activations}        % #12: hardware-aware activation choice
 
 % =========================================================================
+\clearpage
 \section{Task 3: Optimizer Selection and Tuning}
 \label{sec:task3}
 
@@ -225,7 +228,10 @@ The per-layer tables below are produced by
 \texttt{scripts/build\_tables.py} directly from the model definitions, by a
 forward pass of one $64\times64$ image. They are the machine-generated
 counterpart of the hand derivations in Section~\ref{sec:task2}: every
-parameter count there must match the corresponding row here.
+parameter count there must match the corresponding row here.  Only the
+shape-changing and parameter-bearing operations are listed; the ReLU and
+dropout operations described in Section~\ref{sec:custom-architecture} are
+omitted from these summaries, not from the implemented networks.
 
 \begin{table}[H]
   \centering

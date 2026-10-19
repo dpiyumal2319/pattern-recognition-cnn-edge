@@ -6,7 +6,11 @@ $\alpha=10^{-3}$, plain stochastic gradient descent (SGD) with
 $\alpha=10^{-2}$, and SGD with the same learning rate and momentum $m=0.9$.
 Only the optimizer block changes; the model, split manifest, random seed, data
 order, batch size, augmentation, epoch budget, and execution device are held
-constant.  This isolation is checked programmatically before training begins.
+constant.  The sweep checks the planned configuration equality before
+training.  The committed Adam run records \texttt{device: auto}, whereas the
+SGD runs record \texttt{device: cuda}; their profiles confirm the same
+effective Tesla T4 device.  All use seed 42, batch size 128, 30 epochs,
+zero weight decay, and a fixed learning rate without a scheduler.
 
 The SGD update is
 \begin{equation}
@@ -20,32 +24,44 @@ while momentum adds a velocity term,
 The momentum value $0.9$ is therefore compared against $m=0$ without changing
 SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
 rate rather than forcing all optimizers to share a numerically equal step
-size: Adam is more forgiving of learning-rate choice,
-whereas the effective region for well-tuned SGD is narrower and
-problem-specific.  The selected starting values, $10^{-3}$ for Adam and
+size: Adam adapts each parameter's step using running first and second moments
+of the gradients, whereas SGD uses the same fixed learning-rate scale for
+every parameter.  The implementation uses Adam's default coefficients
+$\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$.  The selected
+starting values, $10^{-3}$ for Adam and
 $10^{-2}$ for SGD, are conventional baselines for this comparison and are
-recorded in the resolved configuration of every run.
+recorded in the resolved configuration of every run.  This compares three
+specified optimizer configurations, not each optimizer after an equally
+exhaustive learning-rate search.  With one seed per configuration, the
+observed ranking is evidence for this training budget, not a general claim
+that Adam outperforms tuned SGD.
 
 Adam at $\alpha=10^{-3}$ is selected for the final custom-model runs.  As shown
 in Table~\ref{tab:optimizer-comparison}, it achieved the lowest validation loss
-and the highest validation and test accuracy.  Momentum made SGD competitive
-by accumulating a velocity that damps oscillation and maintains progress in a
-consistent descent direction; plain SGD converged much more slowly within the
-same 30-epoch budget.  The choice is based on validation loss rather than test
-accuracy, so the test split remains an unbiased final evaluation.  Each run
-uses the same lowest-validation-loss checkpoint rule, making the comparison
-insensitive to a poorer final epoch.
+and the highest validation accuracy at the selected checkpoint and test
+accuracy among these three configurations.  Momentum made SGD competitive
+relative to plain SGD within this budget; accumulating past gradients can
+maintain progress in consistent descent directions.  Plain SGD converged
+much more slowly within the same 30-epoch budget.  The choice is based on validation loss rather than test
+accuracy, and the reported test accuracies are used only for final evaluation.
+Each run uses the same lowest-validation-loss checkpoint rule, so its
+reported metrics refer to the selected checkpoint rather than a potentially
+poorer final epoch.
 
 \begin{table}[htbp]
   \centering
   \small
   \resizebox{\linewidth}{!}{\input{tables/optimizer_comparison.tex}}
   \caption{Optimizer comparison for Model~B.  All runs use the same Tesla T4,
-  split, seed, data order, batch size, augmentation, and 30-epoch budget.}
+  split, seed, data order, batch size, augmentation, and 30-epoch budget.
+  Validation accuracy is from the lowest-validation-loss checkpoint, not
+  necessarily the maximum-accuracy epoch.  $m$ applies only to SGD; Adam uses
+  its own moment coefficients.  Epoch time is the mean training-pass time,
+  excluding validation.}
   \label{tab:optimizer-comparison}
 \end{table}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.86\linewidth]{figures/optimizer_comparison.png}
   \caption{Validation-loss comparison for Adam, plain SGD, and SGD with
@@ -61,7 +77,11 @@ learning rate $\alpha=10^{-2}$ for $m\in\{0,0.5,0.9,0.99\}$.  Every other
 resolved setting---including the split, seed, data order, augmentation, batch
 size, initialization, and 30-epoch budget---was identical.  All four runs were
 also timed on the same NVIDIA GeForce RTX~3060 Laptop GPU, so device variation
-cannot explain the differences in Figure~\ref{fig:momentum-ablation}.
+cannot explain the differences within Figure~\ref{fig:momentum-ablation}.
+These are the separate \texttt{momentum\_m000}, \texttt{momentum\_m050},
+\texttt{momentum\_m090}, and \texttt{momentum\_m099} runs, not the T4
+runs in Table~\ref{tab:optimizer-comparison}; epoch times must not be
+compared across these two device groups.
 
 The momentum update,
 \begin{equation}
@@ -76,24 +96,27 @@ ravine, gradient components that alternate sign instead cancel part of the
 stored velocity, damping side-to-side oscillation while preserving progress
 along the ravine.
 
-The curves exhibit both effects.  With $m=0$, Equation~\ref{eq:momentum-update}
-has no memory and validation loss remains high within the epoch budget.
+The validation curves are consistent with faster convergence from momentum,
+but do not measure gradient directions or velocity directly.  With $m=0$,
+Equation~\ref{eq:momentum-update} has no memory and validation loss remains high within the epoch budget.
 Setting $m=0.5$ provides some carry-over and converges faster, but still leaves
 substantial loss after 30 epochs.  The $m=0.9$ run descends steadily and reaches
 the lowest validation loss, making it the preferred momentum setting under the
-fixed budget.  At $m=0.99$, the large retained velocity produces the fastest
-initial descent but repeatedly overshoots the local descent direction: the
-validation curve oscillates after its early minimum and finishes less stably.
+fixed budget.  At $m=0.99$, validation loss falls fastest initially but
+fluctuates during later epochs and finishes above its selected minimum.  Retaining more past velocity
+is a plausible explanation for this behaviour, but these loss curves alone
+do not establish that individual updates overshot a local minimum.
 Although that run happens to obtain a slightly higher test accuracy, it is not
 selected on the test split; optimizer selection uses validation loss to avoid
 biasing the final evaluation.
 
 Thus momentum is not simply ``more is better'': too little fails to exploit
 consistent gradients, while too much retains stale velocity and can destabilise
-convergence.  For this model and learning rate, $m=0.9$ gives the best balance
-between acceleration and damping.
+convergence.  Among these four single-seed runs at the fixed learning rate,
+$m=0.9$ attains the lowest validation loss.  Repeated runs would be needed to assess
+the stability of this ranking across random seeds.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
   \centering
   \includegraphics[width=0.86\linewidth]{figures/momentum_ablation.png}
   \caption{Validation-loss curves for Model~B with SGD at

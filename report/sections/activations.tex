@@ -33,30 +33,27 @@ Their definitions,
 \end{equation}
 require exponential evaluation or an approximation.  Both saturate, producing near-zero gradients at the
 extremes.  A representative embedded alternative illustrates the memory--time
-trade-off: CMSIS-NN implements 16-bit sigmoid and tanh by two reads from a
-256-entry \texttt{uint16\_t} sigmoid table plus integer interpolation for each
-value.  The table alone occupies $256\times2=512$ bytes of read-only memory,
+trade-off: CMSIS-NN implements 16-bit sigmoid and tanh using a
+256-entry \texttt{uint16\_t} sigmoid table.  Non-saturated inputs use two table reads and integer
+interpolation; inputs outside the table range use a saturation branch.  The table alone occupies $256\times2=512$ bytes of read-only memory,
 before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_nn\_activation\_s16.c}}, lines 47--108, and
 \texttt{arm\_nn\_tables.h}, line 37,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_nn_activation_s16.c},
 \url{https://github.com/ARM-software/CMSIS-NN/blob/main/Include/arm_nn_tables.h}.}
-Using either function at all hidden sites would therefore repeat table access
-and interpolation 195,456 times per image instead of applying a threshold.
+Using either function at all hidden sites would therefore require 195,456
+lookup/interpolation or saturation evaluations per image instead of applying
+a threshold.  These integer kernels illustrate possible embedded costs;
+they are not the floating-point PyTorch kernels used in our experiments.
 
-Floating-point support cannot be assumed on a small microcontroller.  Arm's
-Cortex-M DSP study reports that Cortex-M3 executes floating-point work by
-integer emulation, while FPU-equipped Cortex-M4/M7 devices accelerate it; in
-the paper's 32-point floating-point real-FFT benchmark, the measured counts are
-16,183 cycles on Cortex-M3 and 962 on Cortex-M7, a $16.8\times$ difference.
-The same paper summarises the broader measured gap as approximately
-$20\times$.\footnote{Arm Ltd., \emph{DSP capabilities of Cortex-M4 and
-Cortex-M7}, 2016, pp.~3 and 12,
+Floating-point support also depends on the target core.  Arm describes the
+Cortex-M4/M7 floating-point unit as optional and contrasts hardware floating
+point with emulation using integer operations.\footnote{Arm Ltd.,
+\emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
 \url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
-This is not an \texttt{exp} benchmark, so it is not used as a universal
-activation latency; it demonstrates why an FPU-specific cycle claim would be
-misleading and why avoiding transcendental floating-point work is the safer
-architecture choice.
+This supports avoiding unnecessary floating-point transcendental operations;
+it does not provide a measured activation latency for our models.  No
+microcontroller inference benchmark was performed.
 
 GELU was also rejected.  Its exact form $x\Phi(x)$ uses the Gaussian cumulative
 distribution (equivalently an error function), while its common approximation
@@ -64,8 +61,8 @@ uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
 K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
 \url{https://arxiv.org/abs/1606.08415}.}
 Leaky ReLU and PReLU are computationally efficient alternatives that
-avoid dead neurons, but they require a multiply on
-the negative branch; PReLU additionally stores and learns the slope $\alpha$.
+retain a nonzero negative-side gradient when the slope is nonzero, but
+require a multiply on the negative branch; PReLU additionally stores and learns the slope $\alpha$.
 Without evidence that dying ReLUs impair these models, those extra operations
 and parameters are not justified.
 
@@ -80,7 +77,7 @@ The upper bound prevents rare large activations from expanding the represented
 range, so a fixed number of integer levels can cover the useful interval more
 densely.  This is directly relevant to int8 deployment and explains why Arm
 CMSIS-NN provides a dedicated signed-8-bit ReLU6 operator.  However, this
-assignment makes the edge argument analytically and explicitly excludes
+project makes the edge argument analytically and does not perform
 quantisation.  The custom models are trained and evaluated in floating point,
 so imposing an upper saturation at six would discard positive magnitude
 without delivering a required int8 benefit.  Ordinary ReLU therefore matches
@@ -101,8 +98,9 @@ activation would apply the expensive operation to 195,456 values, approximately
 
 The PyTorch models deliberately return raw logits.  During training,
 \texttt{CrossEntropyLoss} consumes those logits directly, avoiding a separate
-softmax layer.  During inference, softmax is needed only when calibrated class
-probabilities must be reported; the predicted class itself is the index of the
+softmax layer.  During inference, softmax is needed only when normalised class
+probabilities must be reported; softmax alone does not establish calibration.
+For classification, the predicted class itself is the index of the
 largest logit because softmax preserves ordering.  Consequently, the necessary
-probability normalisation is confined to a negligible ten-value output stage,
+probability normalisation is confined to a ten-value output stage,
 while the high-volume hidden activations retain the comparison-only ReLU.

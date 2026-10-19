@@ -1,0 +1,571 @@
+% Dasun's standalone review workspace for issue #67.
+% Contains copied Sections 2 and 3 and the layer-table appendix only.
+% Build from report/: pdflatex -interaction=nonstopmode -halt-on-error dasun.tex
+% Run twice to resolve references. dasun.pdf is a local, ignored review artifact.
+% Edit prose here, then copy the marked content back to its canonical section.
+% Preamble/styles are copied from main.tex; generated tables/figures stay shared.
+
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+
+% ---------------------------------------------------------------- listings --
+% Code styles carried over unchanged from A02.
+
+\definecolor{codebg}{RGB}{234,243,224}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codeblue}{RGB}{0,0,180}
+\definecolor{codegray}{RGB}{110,110,110}
+\definecolor{codeorange}{RGB}{180,90,0}
+
+\lstdefinestyle{python}{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeblue}\bfseries,
+    commentstyle=\color{codegray}\itshape,
+    stringstyle=\color{codeorange},
+    numbers=none,
+    breaklines=true,
+    breakatwhitespace=false,
+    showstringspaces=false,
+    frame=single,
+    framerule=0pt,
+    xleftmargin=2pt,
+    xrightmargin=2pt,
+    tabsize=4,
+    language=Python,
+    columns=fullflexible,
+    aboveskip=8pt,
+    belowskip=8pt
+}
+
+\lstdefinestyle{output}{
+    backgroundcolor=\color{white},
+    basicstyle=\ttfamily\footnotesize,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{black!40},
+    breaklines=true,
+    xleftmargin=2pt,
+    xrightmargin=2pt,
+    aboveskip=4pt,
+    belowskip=8pt
+}
+
+\lstset{style=python}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=red!70!black,
+    urlcolor=blue,
+    citecolor=red!70!black
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+% ------------------------------------------------------ skeleton helpers --
+
+% Red, bracketed text for anything a human must still fill in. Red so that a
+% placeholder left in by accident is impossible to miss in the final PDF;
+% #26 (final assembly) must leave none.
+\newcommand{\placeholder}[1]{\textcolor{red}{\textbf{[#1]}}}
+
+% A framed note for content an open issue will supply.
+\newcommand{\pending}[1]{%
+  \begin{center}
+  \fbox{\parbox{0.9\linewidth}{\centering\itshape\color{red!70!black}Pending: #1}}%
+  \end{center}}
+
+% Generated artifacts that may not exist yet. Each takes the path the
+% generator writes to and the issue that produces it. Once the file exists it
+% is used as-is; until then the PDF shows where it will go and who owes it.
+%   \generatedtable{tables/x.tex}{\#22}
+%   \generatedfigure[width=0.8\linewidth]{figures/x.png}{\#22}
+% \detokenize prints the path verbatim: generated file names contain
+% underscores, which LaTeX would otherwise read as math subscripts.
+\newcommand{\generatedtable}[2]{%
+  \IfFileExists{#1}{\input{#1}}%
+    {\pending{generated table \texttt{\detokenize{#1}} (#2)}}}
+\newcommand{\generatedfigure}[3][width=\linewidth]{%
+  \IfFileExists{#2}{\includegraphics[#1]{#2}}%
+    {\pending{generated figure \texttt{\detokenize{#2}} (#3)}}}
+
+% ------------------------------------------------------------ title data --
+% Filled in by #26 (final assembly). The submission file name is
+% <groupno>_A03_EN3150.
+
+\newcommand{\groupno}{9}
+\newcommand{\repourl}{https://github.com/dpiyumal2319/pattern-recognition-cnn-edge}
+% The build date: the submitted PDF is built on submission day.
+\newcommand{\submissiondate}{\today}
+
+\title{}
+\date{}
+
+
+\begin{document}
+% Personal review workspace for #67. Edit copied prose here before reintegrating.
+% BEGIN architecture
+\setcounter{section}{1}
+\clearpage
+\section{Task 2: Custom Architecture Design}
+\label{sec:task2}
+\subsection{Custom architecture design}
+\label{sec:custom-architecture}
+
+Both custom networks accept a $64\times64$ RGB image and produce ten class
+logits.  Each feature-extraction
+stage uses a valid (unpadded), stride--1 $3\times3$ convolutional
+operation, ReLU, and $2\times2$ stride--2 max pooling.  Thus the spatial sequence is
+$64\rightarrow62\rightarrow31\rightarrow29\rightarrow14\rightarrow12
+\rightarrow6$.  Both networks use channel widths 32, 64, and 128 and hidden
+fully connected widths 128 and 64.  This holds the representation widths fixed
+so that the resource difference comes from two deliberate substitutions:
+standard convolution by depthwise separable convolution, and flattening by
+global average pooling (GAP).  Both models use biases in all convolutional
+and dense layers, no batch normalisation, and dropout with probability 0.2
+immediately before each hidden dense layer during training.  Dropout is
+disabled for validation and inference.  The final dense layer returns logits
+without a ReLU or softmax.
+
+A standard convolution has
+\begin{equation}
+  P_{\mathrm{conv}}=(K_hK_wC_{\mathrm{in}}+1)C_{\mathrm{out}},
+\end{equation}
+where the added one is one bias per output channel.  A depthwise--pointwise
+pair instead has
+\begin{equation}
+  P_{\mathrm{sep}}=(K_hK_w+1)C_{\mathrm{in}}
+  +(C_{\mathrm{in}}+1)C_{\mathrm{out}}.
+\end{equation}
+A dense layer has $(N_{\mathrm{in}}+1)N_{\mathrm{out}}$ parameters.  For one
+image, convolution MACs are counted as
+$K_hK_wC_{\mathrm{in}}C_{\mathrm{out}}H_{\mathrm{out}}W_{\mathrm{out}}$
+and dense MACs as $N_{\mathrm{in}}N_{\mathrm{out}}$; bias additions are not
+counted.  Max pooling, ReLU, dropout, flatten, and GAP have no trainable
+parameters.  To match the project profiler exactly, pooling and averaging
+operations are also outside the reported MAC total.
+
+\subsubsection{Model A: standard CNN}
+
+Model A preserves all $128\times6\times6=4{,}608$ final feature values before
+the first dense layer.  Table~\ref{tab:model-a-hand-derivation} shows that this
+flattened head, rather than the convolutions, dominates its parameter count.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Hand-derived parameters and MACs for Model A.}
+  \label{tab:model-a-hand-derivation}
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{llll}
+    \hline
+    Layer & Output & Parameter arithmetic & MAC arithmetic \\
+    \hline
+    Conv 1 & $32\times62\times62$ & $(3\times3\times3+1)\times32=896$
+      & $3\times3\times3\times32\times62^2=3{,}321{,}216$ \\
+    MaxPool 1 & $32\times31\times31$ & $0$ & $0$ (not profiled) \\
+    Conv 2 & $64\times29\times29$ & $(3\times3\times32+1)\times64=18{,}496$
+      & $3\times3\times32\times64\times29^2=15{,}501{,}312$ \\
+    MaxPool 2 & $64\times14\times14$ & $0$ & $0$ (not profiled) \\
+    Conv 3 & $128\times12\times12$ & $(3\times3\times64+1)\times128=73{,}856$
+      & $3\times3\times64\times128\times12^2=10{,}616{,}832$ \\
+    MaxPool 3 & $128\times6\times6$ & $0$ & $0$ (not profiled) \\
+    Flatten & $4{,}608$ & $0$ & $0$ \\
+    Dense 1 & $128$ & $(4{,}608+1)\times128=589{,}952$
+      & $4{,}608\times128=589{,}824$ \\
+    Dense 2 & $64$ & $(128+1)\times64=8{,}256$
+      & $128\times64=8{,}192$ \\
+    Output & $10$ & $(64+1)\times10=650$ & $64\times10=640$ \\
+    \hline
+    Total & & $692{,}106$ & $30{,}038{,}016$ \\
+    \hline
+  \end{tabular}%
+  }
+\end{table}
+
+The convolutional stack contributes $93{,}248$ parameters, whereas the dense
+head contributes $598{,}858$ ($86.5\%$ of the total).  This is why retaining a
+flattened head is useful for Model A as a deliberately resource-heavy baseline,
+but unsuitable for the constrained model.
+
+\subsubsection{Model B: depthwise separable CNN}
+
+For each Model B stage, the depthwise step applies one $3\times3$ filter to
+each input channel and the pointwise $1\times1$ step mixes those channels.
+ReLU follows the pointwise step; there is no activation between the
+depthwise and pointwise convolutions.  The two rows are kept separate in
+Table~\ref{tab:model-b-hand-derivation} to show the cost of each step.
+GAP reduces the $128\times6\times6$ tensor to 128 channel means before the
+dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Hand-derived parameters and MACs for Model B. DW and PW denote
+  depthwise $3\times3$ and pointwise $1\times1$ convolution.}
+  \label{tab:model-b-hand-derivation}
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{llll}
+    \hline
+    Layer & Output & Parameter arithmetic & MAC arithmetic \\
+    \hline
+    DW 1 & $3\times62\times62$ & $(3\times3+1)\times3=30$
+      & $3\times3\times3\times62^2=103{,}788$ \\
+    PW 1 & $32\times62\times62$ & $(3+1)\times32=128$
+      & $3\times32\times62^2=369{,}024$ \\
+    MaxPool 1 & $32\times31\times31$ & $0$ & $0$ (not profiled) \\
+    DW 2 & $32\times29\times29$ & $(3\times3+1)\times32=320$
+      & $3\times3\times32\times29^2=242{,}208$ \\
+    PW 2 & $64\times29\times29$ & $(32+1)\times64=2{,}112$
+      & $32\times64\times29^2=1{,}722{,}368$ \\
+    MaxPool 2 & $64\times14\times14$ & $0$ & $0$ (not profiled) \\
+    DW 3 & $64\times12\times12$ & $(3\times3+1)\times64=640$
+      & $3\times3\times64\times12^2=82{,}944$ \\
+    PW 3 & $128\times12\times12$ & $(64+1)\times128=8{,}320$
+      & $64\times128\times12^2=1{,}179{,}648$ \\
+    MaxPool 3 & $128\times6\times6$ & $0$ & $0$ (not profiled) \\
+    GAP and flatten & $128$ & $0$ & $0$ (not profiled) \\
+    Dense 1 & $128$ & $(128+1)\times128=16{,}512$
+      & $128\times128=16{,}384$ \\
+    Dense 2 & $64$ & $(128+1)\times64=8{,}256$
+      & $128\times64=8{,}192$ \\
+    Output & $10$ & $(64+1)\times10=650$ & $64\times10=640$ \\
+    \hline
+    Total & & $36{,}968$ & $3{,}725{,}196$ \\
+    \hline
+  \end{tabular}%
+  }
+\end{table}
+
+The separable blocks contain $11{,}550$ parameters and the GAP-based dense
+head contains $25{,}418$, placing Model B $63{,}032$ parameters below the
+100,000-parameter constraint.  A flattened Model B would retain the
+$589{,}952$-parameter first dense layer and would therefore fail the budget;
+narrowing all feature channels was rejected because it would also reduce the
+feature extractor's representational width.
+
+\subsubsection{Compute saving and profiler cross-check}
+
+Table~\ref{tab:separable-mac-saving} isolates the convolution substitution at
+identical input/output shapes.  Across the three stages it reduces convolution
+MACs from $29{,}439{,}360$ to $3{,}699{,}980$, a $7.96\times$ reduction.  The
+reduction increases as the channel count grows:
+for $256\rightarrow256$, the exact per-location costs are
+$9\times256\times256=589{,}824$ and
+$9\times256+256\times256=67{,}840$, giving an $8.69\times$ reduction.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Direct MAC comparison between standard and depthwise separable
+  convolution at each common stage shape.}
+  \label{tab:separable-mac-saving}
+  \begin{tabular}{lrrr}
+    \hline
+    Stage ($C_{\mathrm{in}}\rightarrow C_{\mathrm{out}}$) & Standard & Separable & Reduction \\
+    \hline
+    $3\rightarrow32$, $62\times62$ & $3{,}321{,}216$ & $472{,}812$ & $7.02\times$ \\
+    $32\rightarrow64$, $29\times29$ & $15{,}501{,}312$ & $1{,}964{,}576$ & $7.89\times$ \\
+    $64\rightarrow128$, $12\times12$ & $10{,}616{,}832$ & $1{,}262{,}592$ & $8.41\times$ \\
+    \hline
+    Convolution total & $29{,}439{,}360$ & $3{,}699{,}980$ & $7.96\times$ \\
+    \hline
+  \end{tabular}
+\end{table}
+
+Including the different classifier heads, Model B uses $18.72\times$ fewer
+trainable parameters (a $94.66\%$ reduction) and $8.06\times$ fewer MACs per
+image (an $87.60\%$ reduction) than Model A.  These are arithmetic savings,
+not measured inference speedups: memory traffic, kernel support, and the
+operations omitted from the MAC count also affect latency.  Finally, the hand-derived totals
+were evaluated independently with the forward-hook profiler: the generated
+profile values were exactly $692{,}106$ parameters and
+$30{,}038{,}016$ MACs for Model A, and $36{,}968$ parameters and $3{,}725{,}196$
+MACs for Model B.  The zero discrepancies show that the tables describe the
+implemented networks rather than an idealised architecture.
+
+% END architecture
+% BEGIN activations
+\subsection{Hardware-aware activation-function choice}
+\label{sec:activation-choice}
+
+Models A and B use the rectified linear unit (ReLU),
+$f(x)=\max(0,x)$, after every convolutional stage and hidden fully connected
+layer.  ReLU provides computationally efficient thresholding and does not
+saturate for positive inputs.  Its limitations are that negative units have zero gradient
+and can become ``dying ReLUs'', and the output is not zero-centred.  These are
+training risks, but neither changes the inference operation: compare with zero
+and retain either zero or the input value.
+
+The hardware consequence is substantial because activation cost is paid for
+every feature value, not once per layer.  From the implemented output shapes,
+each custom model evaluates
+\begin{equation}
+  32(62^2)+64(29^2)+128(12^2)+128+64=195{,}456
+\end{equation}
+hidden activation values per image.  Arm's CMSIS-NN Q7 reference ReLU implements
+each scalar as a negative comparison followed by assignment of zero; on
+DSP-capable M-profile cores its vector path masks four signed 8-bit values per
+loop iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
+\texttt{arm\_relu\_q7.c}}, lines 47--94,
+\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_relu_q7.c}.}
+Thus ``one comparison'' describes the logical arithmetic, although real cycle
+counts also include loads, stores and loop control and depend on the core and
+compiler.  ReLU needs no coefficients, transcendental unit or lookup table.
+
+Sigmoid and tanh are less attractive here for both learning and deployment.
+Their definitions,
+\begin{equation}
+  \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
+  \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
+\end{equation}
+require exponential evaluation or an approximation.  Both saturate, producing near-zero gradients at the
+extremes.  A representative embedded alternative illustrates the memory--time
+trade-off: CMSIS-NN implements 16-bit sigmoid and tanh using a
+256-entry \texttt{uint16\_t} sigmoid table.  Non-saturated inputs use two table reads and integer
+interpolation; inputs outside the table range use a saturation branch.  The table alone occupies $256\times2=512$ bytes of read-only memory,
+before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
+\texttt{arm\_nn\_activation\_s16.c}}, lines 47--108, and
+\texttt{arm\_nn\_tables.h}, line 37,
+\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Source/ActivationFunctions/arm_nn_activation_s16.c},
+\url{https://github.com/ARM-software/CMSIS-NN/blob/main/Include/arm_nn_tables.h}.}
+Using either function at all hidden sites would therefore require 195,456
+lookup/interpolation or saturation evaluations per image instead of applying
+a threshold.  These integer kernels illustrate possible embedded costs;
+they are not the floating-point PyTorch kernels used in our experiments.
+
+Floating-point support also depends on the target core.  Arm describes the
+Cortex-M4/M7 floating-point unit as optional and contrasts hardware floating
+point with emulation using integer operations.\footnote{Arm Ltd.,
+\emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
+\url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
+This supports avoiding unnecessary floating-point transcendental operations;
+it does not provide a measured activation latency for our models.  No
+microcontroller inference benchmark was performed.
+
+GELU was also rejected.  Its exact form $x\Phi(x)$ uses the Gaussian cumulative
+distribution (equivalently an error function), while its common approximation
+uses tanh; either is more involved than thresholding.\footnote{D. Hendrycks and
+K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
+\url{https://arxiv.org/abs/1606.08415}.}
+Leaky ReLU and PReLU are computationally efficient alternatives that
+retain a nonzero negative-side gradient when the slope is nonzero, but
+require a multiply on the negative branch; PReLU additionally stores and learns the slope $\alpha$.
+Without evidence that dying ReLUs impair these models, those extra operations
+and parameters are not justified.
+
+\subsubsection{ReLU6 and low-precision deployment}
+
+MobileNetV2 uses
+$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because the bounded activation is
+robust under low-precision computation.\footnote{M. Sandler et al.,
+\emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
+\url{https://arxiv.org/abs/1801.04381}.}
+The upper bound prevents rare large activations from expanding the represented
+range, so a fixed number of integer levels can cover the useful interval more
+densely.  This is directly relevant to int8 deployment and explains why Arm
+CMSIS-NN provides a dedicated signed-8-bit ReLU6 operator.  However, this
+project makes the edge argument analytically and does not perform
+quantisation.  The custom models are trained and evaluated in floating point,
+so imposing an upper saturation at six would discard positive magnitude
+without delivering a required int8 benefit.  Ordinary ReLU therefore matches
+the present deployment scope; ReLU6 is a
+future quantised-deployment option rather than the chosen activation.
+
+\subsubsection{The softmax exception}
+
+The ten-class output is the one place where exponentials are justified when
+normalised probabilities are required:
+\begin{equation}
+  p(y=C_k\mid x)=\frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}.
+\end{equation}
+This softmax is evaluated once over ten logits: ten exponentials per image,
+not once over a feature map.  Replacing all hidden ReLUs by an exponential-based
+activation would apply the expensive operation to 195,456 values, approximately
+19,546 times as many values as the output softmax.
+
+The PyTorch models deliberately return raw logits.  During training,
+\texttt{CrossEntropyLoss} consumes those logits directly, avoiding a separate
+softmax layer.  During inference, softmax is needed only when normalised class
+probabilities must be reported; softmax alone does not establish calibration.
+For classification, the predicted class itself is the index of the
+largest logit because softmax preserves ordering.  Consequently, the necessary
+probability normalisation is confined to a ten-value output stage,
+while the high-volume hidden activations retain the comparison-only ReLU.
+
+% END activations
+\clearpage
+% BEGIN optimizer
+\section{Task 3: Optimizer Selection and Tuning}
+\label{sec:task3}
+\subsection{Optimizer comparison protocol}
+\label{sec:optimizer-comparison}
+
+The optimizer comparison uses Model~B under three configurations: Adam with
+$\alpha=10^{-3}$, plain stochastic gradient descent (SGD) with
+$\alpha=10^{-2}$, and SGD with the same learning rate and momentum $m=0.9$.
+Only the optimizer block changes; the model, split manifest, random seed, data
+order, batch size, augmentation, epoch budget, and execution device are held
+constant.  The sweep checks the planned configuration equality before
+training.  The committed Adam run records \texttt{device: auto}, whereas the
+SGD runs record \texttt{device: cuda}; their profiles confirm the same
+effective Tesla T4 device.  All use seed 42, batch size 128, 30 epochs,
+zero weight decay, and a fixed learning rate without a scheduler.
+
+The SGD update is
+\begin{equation}
+  w \leftarrow w-\alpha\frac{\partial L(w)}{\partial w},
+\end{equation}
+while momentum adds a velocity term,
+\begin{equation}
+  v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
+  \qquad w \leftarrow w+v.
+\end{equation}
+The momentum value $0.9$ is therefore compared against $m=0$ without changing
+SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
+rate rather than forcing all optimizers to share a numerically equal step
+size: Adam adapts each parameter's step using running first and second moments
+of the gradients, whereas SGD uses the same fixed learning-rate scale for
+every parameter.  The implementation uses Adam's default coefficients
+$\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$.  The selected
+starting values, $10^{-3}$ for Adam and
+$10^{-2}$ for SGD, are conventional baselines for this comparison and are
+recorded in the resolved configuration of every run.  This compares three
+specified optimizer configurations, not each optimizer after an equally
+exhaustive learning-rate search.  With one seed per configuration, the
+observed ranking is evidence for this training budget, not a general claim
+that Adam outperforms tuned SGD.
+
+Adam at $\alpha=10^{-3}$ is selected for the final custom-model runs.  As shown
+in Table~\ref{tab:optimizer-comparison}, it achieved the lowest validation loss
+and the highest validation accuracy at the selected checkpoint and test
+accuracy among these three configurations.  Momentum made SGD competitive
+relative to plain SGD within this budget; accumulating past gradients can
+maintain progress in consistent descent directions.  Plain SGD converged
+much more slowly within the same 30-epoch budget.  The choice is based on validation loss rather than test
+accuracy, and the reported test accuracies are used only for final evaluation.
+Each run uses the same lowest-validation-loss checkpoint rule, so its
+reported metrics refer to the selected checkpoint rather than a potentially
+poorer final epoch.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \resizebox{\linewidth}{!}{\input{tables/optimizer_comparison.tex}}
+  \caption{Optimizer comparison for Model~B.  All runs use the same Tesla T4,
+  split, seed, data order, batch size, augmentation, and 30-epoch budget.
+  Validation accuracy is from the lowest-validation-loss checkpoint, not
+  necessarily the maximum-accuracy epoch.  $m$ applies only to SGD; Adam uses
+  its own moment coefficients.  Epoch time is the mean training-pass time,
+  excluding validation.}
+  \label{tab:optimizer-comparison}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.86\linewidth]{figures/optimizer_comparison.png}
+  \caption{Validation-loss comparison for Adam, plain SGD, and SGD with
+  momentum on Model~B under an otherwise identical training budget.}
+  \label{fig:optimizer-comparison}
+\end{figure}
+
+\subsection{Effect of the momentum coefficient}
+\label{sec:momentum-ablation}
+
+To isolate the effect of momentum, Model~B was trained with SGD at the fixed
+learning rate $\alpha=10^{-2}$ for $m\in\{0,0.5,0.9,0.99\}$.  Every other
+resolved setting---including the split, seed, data order, augmentation, batch
+size, initialization, and 30-epoch budget---was identical.  All four runs were
+also timed on the same NVIDIA GeForce RTX~3060 Laptop GPU, so device variation
+cannot explain the differences within Figure~\ref{fig:momentum-ablation}.
+These are the separate \texttt{momentum\_m000}, \texttt{momentum\_m050},
+\texttt{momentum\_m090}, and \texttt{momentum\_m099} runs, not the T4
+runs in Table~\ref{tab:optimizer-comparison}; epoch times must not be
+compared across these two device groups.
+
+The momentum update,
+\begin{equation}
+  v \leftarrow mv-\alpha\frac{\partial L(w)}{\partial w},
+  \qquad w \leftarrow w+v,
+  \label{eq:momentum-update}
+\end{equation}
+shows that $m$ controls how much of the previous velocity survives.  When
+successive gradients have a consistent sign, their contributions accumulate
+in $v$, increasing progress along that direction.  Across a narrow loss
+ravine, gradient components that alternate sign instead cancel part of the
+stored velocity, damping side-to-side oscillation while preserving progress
+along the ravine.
+
+The validation curves are consistent with faster convergence from momentum,
+but do not measure gradient directions or velocity directly.  With $m=0$,
+Equation~\ref{eq:momentum-update} has no memory and validation loss remains high within the epoch budget.
+Setting $m=0.5$ provides some carry-over and converges faster, but still leaves
+substantial loss after 30 epochs.  The $m=0.9$ run descends steadily and reaches
+the lowest validation loss, making it the preferred momentum setting under the
+fixed budget.  At $m=0.99$, validation loss falls fastest initially but
+fluctuates during later epochs and finishes above its selected minimum.  Retaining more past velocity
+is a plausible explanation for this behaviour, but these loss curves alone
+do not establish that individual updates overshot a local minimum.
+Although that run happens to obtain a slightly higher test accuracy, it is not
+selected on the test split; optimizer selection uses validation loss to avoid
+biasing the final evaluation.
+
+Thus momentum is not simply ``more is better'': too little fails to exploit
+consistent gradients, while too much retains stale velocity and can destabilise
+convergence.  Among these four single-seed runs at the fixed learning rate,
+$m=0.9$ attains the lowest validation loss.  Repeated runs would be needed to assess
+the stability of this ranking across random seeds.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.86\linewidth]{figures/momentum_ablation.png}
+  \caption{Validation-loss curves for Model~B with SGD at
+  $\alpha=10^{-2}$.  Momentum is the only methodological variable across the
+  four 30-epoch runs.}
+  \label{fig:momentum-ablation}
+\end{figure}
+
+% END optimizer
+\clearpage
+% BEGIN appendix
+\appendix
+\section{Generated Layer Tables}
+\label{app:layer-tables}
+
+The per-layer tables below are produced by
+\texttt{scripts/build\_tables.py} directly from the model definitions, by a
+forward pass of one $64\times64$ image. They are the machine-generated
+counterpart of the hand derivations in Section~\ref{sec:task2}: every
+parameter count there must match the corresponding row here.  Only the
+shape-changing and parameter-bearing operations are listed; the ReLU and
+dropout operations described in Section~\ref{sec:custom-architecture} are
+omitted from these summaries, not from the implemented networks.
+
+\begin{table}[H]
+  \centering
+  \caption{Model A layer summary, generated from \texttt{configs/model\_a.yaml}.}
+  \label{tab:model-a-layers}
+  \generatedtable{tables/model_a_layers.tex}{\#9}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{Model B layer summary, generated from \texttt{configs/model\_b.yaml}.
+  Each depthwise separable block appears as its two steps.}
+  \label{tab:model-b-layers}
+  \generatedtable{tables/model_b_layers.tex}{\#10}
+\end{table}
+
+
+% END appendix
+\end{document}

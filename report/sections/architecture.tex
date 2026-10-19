@@ -3,14 +3,18 @@
 
 Both custom networks accept a $64\times64$ RGB image and produce ten class
 logits.  Each feature-extraction
-stage is a valid $3\times3$ convolution, ReLU, and $2\times2$ stride--2 max
-pool.  Thus the spatial sequence is
+stage uses a valid (unpadded), stride--1 $3\times3$ convolutional
+operation, ReLU, and $2\times2$ stride--2 max pooling.  Thus the spatial sequence is
 $64\rightarrow62\rightarrow31\rightarrow29\rightarrow14\rightarrow12
 \rightarrow6$.  Both networks use channel widths 32, 64, and 128 and hidden
 fully connected widths 128 and 64.  This holds the representation widths fixed
 so that the resource difference comes from two deliberate substitutions:
 standard convolution by depthwise separable convolution, and flattening by
-global average pooling (GAP).
+global average pooling (GAP).  Both models use biases in all convolutional
+and dense layers, no batch normalisation, and dropout with probability 0.2
+immediately before each hidden dense layer during training.  Dropout is
+disabled for validation and inference.  The final dense layer returns logits
+without a ReLU or softmax.
 
 A standard convolution has
 \begin{equation}
@@ -76,8 +80,9 @@ but unsuitable for the constrained model.
 
 For each Model B stage, the depthwise step applies one $3\times3$ filter to
 each input channel and the pointwise $1\times1$ step mixes those channels.
-The two rows are kept separate in Table~\ref{tab:model-b-hand-derivation} to
-show the cost of each step.
+ReLU follows the pointwise step; there is no activation between the
+depthwise and pointwise convolutions.  The two rows are kept separate in
+Table~\ref{tab:model-b-hand-derivation} to show the cost of each step.
 GAP reduces the $128\times6\times6$ tensor to 128 channel means before the
 dense stack, avoiding the $4{,}608\rightarrow128$ layer that dominates Model A.
 
@@ -156,7 +161,9 @@ $9\times256+256\times256=67{,}840$, giving an $8.69\times$ reduction.
 
 Including the different classifier heads, Model B uses $18.72\times$ fewer
 trainable parameters (a $94.66\%$ reduction) and $8.06\times$ fewer MACs per
-image (an $87.60\%$ reduction) than Model A.  Finally, the hand-derived totals
+image (an $87.60\%$ reduction) than Model A.  These are arithmetic savings,
+not measured inference speedups: memory traffic, kernel support, and the
+operations omitted from the MAC count also affect latency.  Finally, the hand-derived totals
 were evaluated independently with the forward-hook profiler: the generated
 profile values were exactly $692{,}106$ parameters and
 $30{,}038{,}016$ MACs for Model A, and $36{,}968$ parameters and $3{,}725{,}196$
