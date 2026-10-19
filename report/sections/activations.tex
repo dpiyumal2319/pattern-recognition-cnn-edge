@@ -2,86 +2,92 @@
 \label{sec:activation-choice}
 
 Models A and B use ReLU, $f(x)=\max(0,x)$, after each convolutional stage and
-hidden fully connected layer.  It passes positive values unchanged and sets
-negative values to zero.  Positive inputs do not saturate.  Negative inputs
-have zero gradient, so a unit can stop learning if it remains inactive
-(the dying-ReLU problem).  ReLU outputs are also not zero-centred.
+each hidden fully connected layer.  It passes positive values through
+unchanged and sets negative values to zero, so it does not saturate for
+positive inputs.  The weakness is that negative inputs have zero gradient,
+and a unit that stays inactive can stop learning, which is the dying-ReLU
+problem.  ReLU outputs are also not zero-centred, which is a second training
+risk rather than an inference cost.
 
 Each model applies ReLU to
 \begin{equation}
   32(62^2)+64(29^2)+128(12^2)+128+64=195{,}456
 \end{equation}
 hidden values per image.  Arm's CMSIS-NN Q7 reference implementation compares
-each scalar with zero and assigns zero to negative values.  On DSP-capable
-M-profile cores, its vector path masks four signed 8-bit values per loop
+each value with zero and sets the negative ones to zero.  On DSP-capable
+M-profile cores, its vector path masks four signed 8-bit values in each loop
 iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_relu\_q7.c}}, lines 50--101,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_relu_q7.c}.}
-The arithmetic requires no coefficients or lookup table.  Loads, stores and
-loop control still contribute to the cycle count, which depends on the core
-and compiler.
+The operation needs no coefficients or lookup table.  Loads, stores and loop
+control still add to the cycle count, and that count depends on the core and
+the compiler.
 
-Sigmoid and tanh require exponentials or an approximation:
+Sigmoid and tanh, defined as
 \begin{equation}
   \sigma(x)=\frac{1}{1+e^{-x}}, \qquad
   \tanh(x)=\frac{e^x-e^{-x}}{e^x+e^{-x}},
 \end{equation}
-Both functions saturate at extreme inputs, where their gradients approach
-zero.  In CMSIS-NN, the 16-bit implementations use a 256-entry
-\texttt{uint16\_t} sigmoid table.  Inputs within its range need two table
-reads and integer interpolation; inputs outside the range take a saturation
-branch.  The table occupies $256\times2=512$ bytes of read-only memory,
-before code and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
+both need exponentials or an approximation of them.  Both functions also
+saturate at extreme inputs, where their gradients approach zero.  In CMSIS-NN,
+the 16-bit versions of these functions use a 256-entry \texttt{uint16\_t}
+sigmoid table.  Inputs inside the table range need two table reads and an
+integer interpolation, and inputs outside it take a saturation branch.  The
+table takes $256\times2=512$ bytes of read-only memory, before counting code
+and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
 \texttt{arm\_nn\_activation\_s16.c}}, lines 51--117, and
 \texttt{arm\_nn\_tables.h}, line 40,
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_nn_activation_s16.c},
 \url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Include/arm_nn_tables.h}.}
-Using these functions at every hidden site would require 195,456 such
-evaluations per image.  These integer kernels are examples of embedded
-implementations; our experiments use floating-point PyTorch kernels.
+Using these functions at every hidden site would mean 195,456 such
+evaluations per image.  These integer kernels are only examples of embedded
+implementations, and our own experiments use the floating-point kernels in
+PyTorch.
 
-Core support also affects floating-point cost.  Arm describes the Cortex-M4/M7
-FPU as optional and compares hardware floating point with emulation using
-integer operations.\footnote{Arm Ltd.,
+The cost of floating-point work also depends on the core.  Arm describes the
+FPU on Cortex-M4 and Cortex-M7 as optional, and compares hardware floating
+point with emulation using integer operations.\footnote{Arm Ltd.,
 \emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
 \url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
-The activation comparison here is analytical.  We did not measure
-microcontroller inference latency.
+Our activation comparison is therefore analytical, and we did not measure
+inference latency on a microcontroller.
 
-GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution
-(equivalently an error function); its common approximation uses tanh.\footnote{D. Hendrycks and
+GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution,
+which is equivalent to an error function, and its common approximation uses
+tanh.\footnote{D. Hendrycks and
 K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
 \url{https://arxiv.org/abs/1606.08415}.}
 Leaky ReLU and PReLU keep a nonzero gradient on the negative branch when the
-slope is nonzero, at the cost of a multiply on that branch.  PReLU also learns
-and stores the slope $\alpha$.  We chose ReLU for its simpler inference
-operation.  We did not compare activation functions experimentally.
+slope is nonzero, but they need a multiply on that branch, and PReLU also has
+to learn and store the slope $\alpha$.  We chose ReLU because its inference
+operation is the simplest of these, but we did not compare the activation
+functions experimentally.
 
 \subsubsection{ReLU6 and low-precision deployment}
 
 MobileNetV2 uses
-$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ for its robustness in low-precision
-computation.\footnote{M. Sandler et al.,
+$\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because a bounded activation holds
+up better in low-precision computation.\footnote{M. Sandler et al.,
 \emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
 \url{https://arxiv.org/abs/1801.04381}.}
-The upper bound limits the represented range, allowing integer levels to be
-spaced more closely within it.  CMSIS-NN provides a signed-8-bit ReLU6
-operator.  Our custom models use floating point, and quantisation is outside
-this project's scope.  We kept ordinary ReLU so that values above six remain
-available to the next layer.
+The upper bound limits the range that has to be represented, so the integer
+levels can be spaced more closely inside it.  CMSIS-NN also provides a signed
+8-bit ReLU6 operator, but our custom models run in floating point and
+quantisation is outside the scope of this project.  We therefore kept ordinary
+ReLU, so values above six still reach the next layer.
 
 \subsubsection{Output probabilities}
 
-Softmax converts the ten output logits to normalised probabilities:
+Softmax converts the ten output logits into normalised probabilities,
 \begin{equation}
   p(y=C_k\mid x)=\frac{\exp(z_k)}{\sum_{j=1}^{10}\exp(z_j)}.
 \end{equation}
-This requires ten exponentials per image.  Applying an exponential-based
-activation to all 195,456 hidden values would involve approximately
-19,546 times as many values.
+This needs only ten exponentials per image.  Applying an exponential-based
+activation to all 195,456 hidden values instead would involve about 19,546
+times as many values as the output softmax.
 
-The models return raw logits to \texttt{CrossEntropyLoss} during training.
-At inference, the class prediction is the index of the largest logit;
-softmax preserves this ordering.  Softmax is needed only to report
-normalised probabilities, and it does not by itself establish calibration.
-The hidden layers use ReLU throughout.
+During training, the models return raw logits to \texttt{CrossEntropyLoss}.
+At inference, the predicted class is the index of the largest logit, and
+softmax does not change this ordering.  Softmax is needed only when normalised
+probabilities have to be reported, and on its own it does not make those
+probabilities calibrated.

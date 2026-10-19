@@ -224,11 +224,12 @@ repository's \texttt{build\_tables.py} and \texttt{build\_figures.py} scripts.
 \section{Generated Layer Tables}
 \label{app:layer-tables}
 
-\texttt{scripts/build\_tables.py} generates these tables from a forward
-pass of one $64\times64$ image through each model.  The parameter counts
-agree with the hand derivations in Section~\ref{sec:task2}.  The tables list
-shape-changing and parameter-bearing operations.  ReLU and dropout are
-omitted; their placement is described in Section~\ref{sec:custom-architecture}.
+\texttt{scripts/build\_tables.py} generates these tables from a forward pass
+of one $64\times64$ image through each model, and their parameter counts agree
+with the hand derivations in Section~\ref{sec:task2}.  The tables only list
+operations that change the shape or carry parameters.  ReLU and dropout are
+left out of the tables, and their placement is described in
+Section~\ref{sec:custom-architecture}.
 
 \begin{table}[H]
   \centering
