@@ -76,11 +76,42 @@ def test_optimizer_table_uses_committed_run_artifacts(tmp_path):
     )
     text = out.read_text(encoding="utf-8")
     assert text.startswith(r"\begin{tabular}") and text.rstrip().endswith(r"\end{tabular}")
-    assert "Adam & 0.001 & 0.0" in text
+    assert "Adam & 0.001 & --" in text
     assert "SGD & 0.01 & 0.0" in text
     assert "SGD + momentum & 0.01 & 0.9" in text
     assert "Best val. loss" in text and "Test acc." in text and "Epoch (s)" in text
     assert out.read_bytes() == (REPORT_DIR / "tables" / "optimizer_comparison.tex").read_bytes()
+
+
+def test_optimizer_table_labels_selected_accuracy_and_sgd_only_momentum(tmp_path, monkeypatch):
+    """Checkpoint accuracy is not necessarily the maximum accuracy over epochs.
+
+    Adam ignores the shared config's momentum field and uses its own moments,
+    so a numeric zero in that column would misrepresent the optimizer.
+    """
+    directory = tmp_path / "adam_run"
+    directory.mkdir()
+    artifacts = {
+        "config.yaml": {"optimizer": {"name": "adam", "lr": 0.001, "momentum": 0.0}},
+        "selection.json": {"best_val_loss": 0.4, "best_val_acc": 0.65},
+        "metrics.json": {"accuracy": 0.6},
+        "profile.json": {"mean_epoch_seconds": 1.25},
+        "history.json": [
+            {"epoch": 1, "val_loss": 0.4, "val_acc": 0.65},
+            {"epoch": 2, "val_loss": 0.5, "val_acc": 0.9},
+        ],
+    }
+    # JSON is valid YAML too, so all fixtures can use the same serializer.
+    for name, value in artifacts.items():
+        (directory / name).write_text(json.dumps(value), encoding="utf-8")
+    monkeypatch.setattr("pr_edge.tables.RESULTS_DIR", tmp_path)
+
+    text = build_optimizer_comparison(["adam_run"], tmp_path / "table.tex").read_text()
+
+    assert r"SGD $m$" in text
+    assert r"Val. acc. (\%)" in text
+    assert "Best val. acc." not in text
+    assert r"Adam & 0.001 & -- & 0.400 & 65.00 & 60.00 & 1.25" in text
 
 
 def test_optimizer_table_rejects_a_missing_run(tmp_path, monkeypatch):
