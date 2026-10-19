@@ -1,0 +1,52 @@
+% Appendix B. Training settings of every reported run, typed from each run's
+% resolved results/<run_id>/config.yaml. Update this table if a run is rerun
+% with different settings.
+
+Table~\ref{tab:hyperparameters} lists the training settings of every run whose
+results appear in this report, as recorded in each run's resolved
+\texttt{config.yaml} in the repository.
+
+Three learning rates appear, none tuned for this problem. Adam uses its
+authors' default of $10^{-3}$ wherever a network trains from scratch or only a
+new prediction layer is trained, and SGD uses the common starting value
+$10^{-2}$ (Section~\ref{sec:optimizer-comparison}). Full fine-tuning uses
+$10^{-4}$, below the frozen-head rate, to limit changes to the pretrained
+filters (Section~\ref{sec:sota-protocol}).
+
+\begin{table}[H]
+  \centering
+  \caption{Training hyperparameters of every reported run. All runs use seed
+  42, weight decay 0, dropout 0.2, training-set flips and quarter-turns, and a
+  constant learning rate. Momentum applies to SGD only.}
+  \label{tab:hyperparameters}
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lllllrrrr}
+    \toprule
+    Run & Model & Backbone & Optimizer & LR & Momentum & Input & Batch & Epochs \\
+    \midrule
+    \multicolumn{9}{l}{\textit{Custom models, Adam (Tasks 3 and 4)}} \\
+    \texttt{model\_a}      & Model A & -- & Adam & $10^{-3}$ & -- & $64\times64$ & 128 & 30 \\
+    \texttt{model\_a\_100} & Model A & -- & Adam & $10^{-3}$ & -- & $64\times64$ & 128 & 100 \\
+    \texttt{model\_b}      & Model B & -- & Adam & $10^{-3}$ & -- & $64\times64$ & 128 & 30 \\
+    \texttt{model\_b\_100} & Model B & -- & Adam & $10^{-3}$ & -- & $64\times64$ & 128 & 100 \\
+    \midrule
+    \multicolumn{9}{l}{\textit{Custom Model B, SGD (Task 3 optimizer and momentum study)}} \\
+    \texttt{model\_b\_sgd}   & Model B & -- & SGD & $10^{-2}$ & 0    & $64\times64$ & 128 & 30 \\
+    \texttt{model\_b\_sgdm}  & Model B & -- & SGD & $10^{-2}$ & 0.9  & $64\times64$ & 128 & 30 \\
+    \texttt{momentum\_m000}  & Model B & -- & SGD & $10^{-2}$ & 0    & $64\times64$ & 128 & 30 \\
+    \texttt{momentum\_m050}  & Model B & -- & SGD & $10^{-2}$ & 0.5  & $64\times64$ & 128 & 30 \\
+    \texttt{momentum\_m090}  & Model B & -- & SGD & $10^{-2}$ & 0.9  & $64\times64$ & 128 & 30 \\
+    \texttt{momentum\_m099}  & Model B & -- & SGD & $10^{-2}$ & 0.99 & $64\times64$ & 128 & 30 \\
+    \midrule
+    \multicolumn{9}{l}{\textit{Pretrained models (Task 5)}} \\
+    \texttt{mobilenetv2\_64}             & MobileNetV2     & frozen     & Adam & $10^{-3}$ & -- & $64\times64$   & 128 & 30 \\
+    \texttt{mobilenetv2\_64\_ft}         & MobileNetV2     & fine-tuned & Adam & $10^{-4}$ & -- & $64\times64$   & 128 & 30 \\
+    \texttt{efficientnetb0\_64}          & EfficientNet-B0 & frozen     & Adam & $10^{-3}$ & -- & $64\times64$   & 128 & 30 \\
+    \texttt{efficientnetb0\_64\_ft}      & EfficientNet-B0 & fine-tuned & Adam & $10^{-4}$ & -- & $64\times64$   & 128 & 30 \\
+    \texttt{mobilenetv2\_224}            & MobileNetV2     & frozen     & Adam & $10^{-3}$ & -- & $224\times224$ & 128 & 30 \\
+    \texttt{mobilenetv2\_224\_ft\_b128}  & MobileNetV2     & fine-tuned & Adam & $10^{-4}$ & -- & $224\times224$ & 128 & 30 \\
+    \texttt{efficientnetb0\_224}         & EfficientNet-B0 & frozen     & Adam & $10^{-3}$ & -- & $224\times224$ & 128 & 30 \\
+    \texttt{efficientnetb0\_224\_ft\_b128} & EfficientNet-B0 & fine-tuned & Adam & $10^{-4}$ & -- & $224\times224$ & 128 & 30 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
