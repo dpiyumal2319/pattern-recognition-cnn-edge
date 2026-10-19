@@ -40,7 +40,7 @@ After building the latest `report/main.pdf`, run:
 python scripts/build_submission.py
 ```
 
-This creates the gitignored `submission/` folder with `9_A03_EN3150.pdf` and
+This creates the committed `submission/` folder with `9_A03_EN3150.pdf` and
 `9_A03_EN3150_code.zip`. The ZIP contains the six task notebooks and the
 original optional Colab driver at its top level,
 a short README, and `raw_code/` with the Python sources, tests, configs, split

@@ -47,8 +47,6 @@ Thumbs.db
 # Local temporary files
 /tmp/
 
-# Local upload-ready report and code archive (rebuild with build_submission.py)
-/submission/
 
 # NOTE: results/**/*.json and results/**/figures/*.png are deliberately NOT
 # ignored. They are the report's data source - every table and figure is
