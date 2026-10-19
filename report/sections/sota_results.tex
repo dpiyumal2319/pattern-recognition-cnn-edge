@@ -31,7 +31,7 @@ Our main runs keep the input at $64\times64$,which is the original resolution th
 models see. Because ImageNet networks are
 designed for $224\times224$ input, the experiment was repeated for each network
 with the $64\times64$ images upsampled to $224\times224$, for both the frozen and fine-tuned cases. Each $224\times224$
-pair differs from its original pair in input size only, so as to identify the effect of the original resolution on the pretrained features.
+pair differs from its original pair in input size only, so as to identify the effect of keeping the input images at the original resolution that the pretrained networks were trained on.
 
 \subsection{Results}
 \label{sec:sota-results}
@@ -59,10 +59,10 @@ per cent of the network. Accuracy
 gaps between the two rows of a pair is therefore bought with training effort
 alone, with no cost in memory.
 
-We observed that for both networks that accuracy gap is large. Fine-tuning raises all the metrics by 5--10 points
+We observed that for both networks that accuracy gap is large. Fine-tuning raises all the metrics by well
 above the frozen feature extractor CNN case. The explanation is likely the domain shift from ImageNet to Satellite Images.
 ImageNet filters were learnt on close-range photographs of objects, while
-EuroSAT is overhead satellite images at a much larger scale. 
+EuroSAT is overhead satellite images at a much smaller scale. 
 A frozen backbone can only re-weight features that were learnt for the wrong kind of
 image while fine-tuning lets the filters themselves move towards field boundaries,
 road textures and water.
@@ -70,11 +70,8 @@ road textures and water.
 The two architectures also rank differently under the two strategies described above. Frozen,
 EfficientNet-B0 is clearly the weaker network, despite having almost twice
 MobileNetV2's parameters. In the Fine-tuned case, the two networks are practically at the same level. The
-gap between them therefore says how well each network's ImageNet features happen to
-transfer to $64\times64$ overhead images.
-At $64\times64$, both networks' downsampling stages leave a $2\times2$ final
-feature map. Different sensitivity of the pretrained features to input
-scale is a possible explanation.
+gap between the frozen runs shows how well each network's ImageNet features happen to
+transfer to $64\times64$ overhead satellite images.
 Once fine-tuned, however, EfficientNet-B0 offers no meaningful accuracy over
 MobileNetV2 for nearly twice the memory. Therefore MobileNetV2 is the better edge
 candidate of the two.
@@ -120,7 +117,7 @@ six~\cite{sandler2018mobilenetv2}. This bounded behaviour is discussed in
 Section~\ref{sec:activation-choice}. In a diagnostic check which retrained only the prediction
 layer, standardising those features reduced the
 fluctuation only slightly. Learning rates of $3\times10^{-4}$ and $10^{-4}$
-did not remove it either, so the frozen backbone learning rate is not the cause.
+did not remove it either, so the learning rate is not the cause.
 The practical cost lies in checkpoint selection. On a noisy validation curve
 the lowest-loss epoch is partly a matter of chance, and it need not be the
 run's most accurate epoch. Fine-tuning removes the effect because the backbone
