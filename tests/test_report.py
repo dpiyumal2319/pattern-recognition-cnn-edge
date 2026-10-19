@@ -95,10 +95,17 @@ def test_no_placeholder_or_pending_box_reaches_the_submitted_pdf(name):
     \\generatedtable or \\generatedfigure renders a Pending box only when its
     file is missing, which test_every_generated_artifact_exists covers.
     """
+    # Exempt only the two fallback bodies in the generated-artifact helpers.
+    # Macro values such as submissiondate and grouped calls in sections are
+    # rendered content, so they must still be checked.
+    helper_fallbacks = {
+        r"{\pending{generated table \texttt{\detokenize{#1}} (#2)}}}",
+        r"{\pending{generated figure \texttt{\detokenize{#2}} (#3)}}}",
+    }
     uses = [
         line for line in _all_sources()[name].splitlines()
-        if re.search(r"\\(placeholder|pending)\{", line) and "\\newcommand" not in line
-        and not line.lstrip().startswith("{\\pending")  # the macros' own bodies
+        if re.search(r"\\(placeholder|pending)\{", line)
+        and not (name == "main.tex" and line.strip() in helper_fallbacks)
     ]
     assert not uses, f"{name}: {uses}"
 
@@ -118,7 +125,19 @@ def test_title_page_names_the_group_members_and_repository():
     members = re.findall(r"^\s*(\S[^&\n]*?)\s*&\s*(\d{6}[A-Z])\s*\\\\", title, re.MULTILINE)
     assert len(members) == 4, members
     assert len({index for _, index in members}) == 4, "duplicate index number"
+    assert {index: name.strip() for name, index in members}["220727G"] == "WIJETHUNGA W. M. D. P"
     assert "https://github.com/dpiyumal2319/pattern-recognition-cnn-edge" in text
+
+
+@pytest.mark.parametrize("name,text", [
+    ("main.tex", r"\newcommand{\submissiondate}{\placeholder{Submission date}}"),
+    ("sections/discussion.tex", r"{\pending{unfinished discussion}}"),
+])
+def test_submission_guard_rejects_placeholders_in_macro_values_and_groups(monkeypatch, name, text):
+    """Real rendered placeholders must not inherit the helpers' exemption."""
+    monkeypatch.setitem(globals(), "_all_sources", lambda: {name: text})
+    with pytest.raises(AssertionError):
+        test_no_placeholder_or_pending_box_reaches_the_submitted_pdf(name)
 
 
 def test_build_command_fails_loudly_and_runs_from_the_report_directory(monkeypatch):
