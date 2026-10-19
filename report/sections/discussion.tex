@@ -49,9 +49,9 @@ validation, final test evaluation and setup.
 \paragraph{Storage versus working memory.}
 Model~B occupies \FinalBSize{}~KiB on disk. MobileNetV2 and EfficientNet-B0
 require \FinalMobileStorageRatio{} and \FinalEfficientStorageRatio{} times
-as many saved-state bytes. A concrete reference is the
-\href{https://www.st.com/en/microcontrollers-microprocessors/stm32f407vg.html}{STMicroelectronics
-STM32F407VG}, with $1$~MiB flash and $192$~KiB system SRAM, including
+as many saved-state bytes. A concrete reference is the STMicroelectronics
+STM32F407VG~\cite{st2026stm32f407vg}, with $1$~MiB flash and $192$~KiB system
+SRAM, including
 $64$~KiB of core-coupled memory (separate backup SRAM is not counted).
 Model~B's saved weights are below that flash budget; neither SOTA saved state
 is. Firmware and runtime storage must also fit, so this is only a necessary

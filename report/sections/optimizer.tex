@@ -25,10 +25,19 @@ the effect of momentum.  Adam instead scales the step of each parameter using
 running first and second moments of the gradients, and we used its default
 coefficients $\beta_1=0.9$, $\beta_2=0.999$ and $\epsilon=10^{-8}$.
 
-The learning rates of $10^{-3}$ for Adam and $10^{-2}$ for SGD were starting
-values, and we did not run a separate learning-rate search for each optimizer.
-Each configuration was also trained with only one seed, so these results
-hold only for these specific configurations and this training budget.
+We did not tune either learning rate for this problem.  Adam uses
+$\alpha=10^{-3}$, the value recommended by its authors, who report that its
+hyperparameters typically need little tuning~\cite{kingma2015adam}.  SGD
+uses $\alpha=10^{-2}$ as a starting value.  The different values account for
+Adam's per-parameter adaptation and SGD's global step size; a shared numerical
+learning rate would not give equivalent updates.
+
+Schmidt et al. found in their benchmark that trying several optimizers with
+default settings performed about as well as tuning one fixed
+optimizer~\cite{schmidt2021descending}.  This supports the baseline comparison
+used here.  Plain SGD may improve with a separately tuned learning rate.
+Each configuration was trained with only one seed, so these results hold
+only for the recorded configurations and training budget.
 
 We selected Adam at $\alpha=10^{-3}$ for the custom-model runs because it
 had the lowest validation loss in Table~\ref{tab:optimizer-comparison}.  It

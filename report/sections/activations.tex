@@ -15,9 +15,7 @@ Each model applies ReLU to
 hidden values per image.  Arm's CMSIS-NN Q7 reference implementation compares
 each value with zero and sets the negative ones to zero.  On DSP-capable
 M-profile cores, its vector path masks four signed 8-bit values in each loop
-iteration.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_relu\_q7.c}}, lines 50--101,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_relu_q7.c}.}
+iteration~\cite[\texttt{arm\_relu\_q7.c}, ll.~50--101]{cmsisnn}.
 The operation needs no coefficients or lookup table.  Loads, stores and loop
 control still add to the cycle count, and that count depends on the core and
 the compiler.
@@ -33,11 +31,7 @@ the 16-bit versions of these functions use a 256-entry \texttt{uint16\_t}
 sigmoid table.  Inputs inside the table range need two table reads and an
 integer interpolation, and inputs outside it take a saturation branch.  The
 table takes $256\times2=512$ bytes of read-only memory, before counting code
-and temporary values.\footnote{Arm Ltd., \emph{CMSIS-NN
-\texttt{arm\_nn\_activation\_s16.c}}, lines 51--117, and
-\texttt{arm\_nn\_tables.h}, line 40,
-\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Source/ActivationFunctions/arm_nn_activation_s16.c},
-\url{https://github.com/ARM-software/CMSIS-NN/blob/71cbe3d5a686c875c88a4d112633b13fae94b5a2/Include/arm_nn_tables.h}.}
+and temporary values~\cite[\texttt{arm\_nn\_activation\_s16.c}, ll.~51--117; \texttt{arm\_nn\_tables.h}, l.~40]{cmsisnn}.
 Using these functions at every hidden site would mean 195,456 such
 evaluations per image.  These integer kernels are only examples of embedded
 implementations, and our own experiments use the floating-point kernels in
@@ -45,17 +39,13 @@ PyTorch.
 
 The cost of floating-point work also depends on the core.  Arm describes the
 FPU on Cortex-M4 and Cortex-M7 as optional, and compares hardware floating
-point with emulation using integer operations.\footnote{Arm Ltd.,
-\emph{DSP capabilities of Cortex-M4 and Cortex-M7}, 2016, pp.~4--5,
-\url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}.}
+point with emulation using integer operations~\cite[pp.~4--5]{arm2016dsp}.
 Our activation comparison is therefore analytical, and we did not measure
 inference latency on a microcontroller.
 
 GELU's exact form, $x\Phi(x)$, uses the Gaussian cumulative distribution,
 which is equivalent to an error function, and its common approximation uses
-tanh.\footnote{D. Hendrycks and
-K. Gimpel, \emph{Gaussian Error Linear Units (GELUs)}, 2016,
-\url{https://arxiv.org/abs/1606.08415}.}
+tanh~\cite{hendrycks2016gelu}.
 Leaky ReLU and PReLU keep a nonzero gradient on the negative branch when the
 slope is nonzero, but they need a multiply on that branch, and PReLU also has
 to learn and store the slope $\alpha$.  We chose ReLU because its inference
@@ -66,9 +56,7 @@ functions experimentally.
 
 MobileNetV2 uses
 $\operatorname{ReLU6}(x)=\min(\max(0,x),6)$ because a bounded activation holds
-up better in low-precision computation.\footnote{M. Sandler et al.,
-\emph{MobileNetV2: Inverted Residuals and Linear Bottlenecks}, Section~4,
-\url{https://arxiv.org/abs/1801.04381}.}
+up better in low-precision computation~\cite[Sec.~4]{sandler2018mobilenetv2}.
 The upper bound limits the range that has to be represented, so the integer
 levels can be spaced more closely inside it.  CMSIS-NN also provides a signed
 8-bit ReLU6 operator, but our custom models run in floating point and

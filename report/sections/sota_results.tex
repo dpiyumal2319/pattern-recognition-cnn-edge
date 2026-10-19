@@ -6,9 +6,9 @@
 \label{sec:sota-protocol}
 
 Two pretrained lightweight architectures were adapted to EuroSAT:
-MobileNetV2, built from the depthwise separable blocks of
-Section~\ref{sec:task2}, and EfficientNet-B0. Both start from torchvision's
-ImageNet weights. The final linear layer of each classifier is replaced by a
+MobileNetV2~\cite{sandler2018mobilenetv2}, built from the depthwise separable
+blocks of Section~\ref{sec:task2}, and EfficientNet-B0~\cite{tan2019efficientnet}.
+Both start from torchvision's ImageNet weights. The final linear layer of each classifier is replaced by a
 new ten-class prediction layer, and every run uses the same stratified split,
 random seed, augmentation, training-split normalisation statistics, batch
 size of 128, 30-epoch budget and Tesla~T4 as the custom models. The checkpoint
@@ -26,7 +26,7 @@ network was run both ways, so the choice is measured rather than assumed.
   ImageNet weights, with Adam at a learning rate of $10^{-4}$. We chose a rate
   below the frozen-head rate to limit changes to the pretrained filters while
   the new head learns. This is a project choice; the Keras EfficientNet
-  fine-tuning example cited by the brief uses $10^{-5}$.
+  fine-tuning example cited by the brief uses $10^{-5}$~\cite{fu2020keras}.
 \end{itemize}
 
 The primary runs keep the input at $64\times64$, the resolution the custom

@@ -16,7 +16,8 @@ three channels enter the first convolution with different offsets and spreads,
 so the gradient scale differs per channel and a single learning rate suits none
 of them well. The same pipeline, with the same EuroSAT statistics, feeds the
 pretrained models in Task~5. Those networks were trained on standardised
-inputs, but with ImageNet's channel statistics; we use EuroSAT's own instead,
+inputs, but with the channel statistics of ImageNet~\cite{deng2009imagenet};
+we use EuroSAT's own instead,
 so that every model in the comparison sees identically preprocessed images and
 the standardisation reflects the satellite data actually being classified.
 
