@@ -12,7 +12,7 @@ from scripts import build_submission as submission
 def test_notebooks_are_deterministic_valid_and_outputs_are_stripped(tmp_path):
     paths = submission.generate_notebooks(destination=tmp_path)
     original = [path.read_bytes() for path in paths]
-    assert len(paths) == 5
+    assert len(paths) == 6
     submission.generate_notebooks(destination=tmp_path)
     assert [path.read_bytes() for path in paths] == original
     for path in paths:
@@ -53,16 +53,22 @@ def test_committed_notebooks_match_generator(tmp_path):
         assert generated.read_bytes() == committed.read_bytes()
 
 
-def test_sota_notebook_exposes_report_cited_diagnostic_without_rerunning_it(tmp_path):
+@pytest.mark.parametrize("number,prefix,other", [("04", "mobilenetv2", "efficientnetb0"),
+                                               ("05", "efficientnetb0", "mobilenetv2")])
+def test_sota_notebook_exposes_only_its_own_runs_and_diagnostic(tmp_path, number, prefix, other):
     paths = submission.generate_notebooks(destination=tmp_path)
-    notebook = json.loads(next(path for path in paths if path.name.startswith("04_")).read_text(encoding="utf-8"))
+    notebook = json.loads(next(path for path in paths if path.name.startswith(number + "_")).read_text(encoding="utf-8"))
     code = "\n".join("".join(cell["source"]) for cell in notebook["cells"]
                      if cell["cell_type"] == "code")
     assert "%%writefile scripts/diagnose_frozen_head.py" in code
     assert 'Path("results/frozen_head_diagnostic/diagnostic.json").read_text()' in code
     assert 'head["val_loss_sd_mean"]' in code
     assert "RUN_DIAGNOSTIC = False" in code
-    assert "results/rerun_frozen_head_diagnostic/diagnostic.json" in code
+    workflow = "".join(notebook["cells"][-1]["source"])
+    assert f"results/rerun_{prefix}_diagnostic/diagnostic.json" in workflow
+    assert f"'{prefix}_64'" in workflow
+    assert f"'{other}_64'" not in workflow
+    assert f'"--runs", \'{prefix}_64\'' in workflow
 
 
 @pytest.mark.parametrize("relative", ["", "raw_code", "raw_code/src", "notebooks/submission"])

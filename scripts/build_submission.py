@@ -48,6 +48,52 @@ def run_script(script, *args):
 print("Project:", PROJECT)
 '''
 
+def pretrained_spec(number: int, title: str, prefix: str) -> tuple:
+    """Give each pretrained network its own independent source and run workflow."""
+    names = tuple(f"{prefix}_{suffix}" for suffix in ("64", "64_ft", "224", "224_ft_b128"))
+    workflow = '''import json
+
+names = RUN_NAMES
+for name in names:
+    metrics = json.loads((PROJECT / "results" / name / "metrics.json").read_text())
+    print(name, "recorded accuracy:", metrics["accuracy"])
+
+# Inspect only this network's recorded diagnostic; no feature recomputation.
+diagnostic = json.loads(Path("results/frozen_head_diagnostic/diagnostic.json").read_text())
+print("Diagnostic protocol:", diagnostic["protocol"])
+result = diagnostic["runs"][FROZEN_RUN]
+print("Recorded feature statistics:", result["features"])
+for head in result["heads"]:
+    print("lr:", head["lr"], "standardised:", head["standardised"],
+          "mean validation-loss SD:", head["val_loss_sd_mean"])
+
+# Requires prepared EuroSAT and internet for ImageNet weights; prefer a GPU.
+# Each config reproduces its independent initialization and training policy.
+RUN_FULL_TRAINING = False
+if RUN_FULL_TRAINING:
+    for name in names:
+        run_script("scripts/run_experiment.py", "--config", f"configs/{name}.yaml",
+                   "--device", "auto", "--run-id", f"rerun_{name}")
+
+# Optional fixed-feature, head-only diagnostic; does not isolate activation causality.
+RUN_DIAGNOSTIC = False
+if RUN_DIAGNOSTIC:
+    run_script("scripts/diagnose_frozen_head.py", "--runs", FROZEN_RUN,
+               "--device", "auto", "--out", DIAGNOSTIC_OUTPUT)
+'''
+    workflow = workflow.replace("RUN_NAMES", repr(names)).replace("FROZEN_RUN", repr(f"{prefix}_64"))
+    workflow = workflow.replace("DIAGNOSTIC_OUTPUT", repr(f"results/rerun_{prefix}_diagnostic/diagnostic.json"))
+    return (f"{number:02d}_{prefix}", title, "Task 5",
+            ["src/pr_edge/models/sota.py", "scripts/diagnose_frozen_head.py"], workflow,
+            f"This notebook covers {title} only. Primary comparisons use 64 x 64; "
+            "224 x 224 runs are supplementary. Frozen and fine-tuned policies come "
+            "from the supplied YAML configs. The shared torchvision wrapper and "
+            "diagnostic are included verbatim so this notebook works independently. "
+            "Recorded results and this network's diagnostic summaries are inspected "
+            "by default; training and diagnostic recomputation are separate opt-ins. "
+            "Prepare EuroSAT with notebook 01 before full training.")
+
+
 SPECS = [
     ("01_data_preparation", "Data preparation and shared configuration", "Task 1",
      ["src/pr_edge/__init__.py", "src/pr_edge/paths.py", "src/pr_edge/config.py",
@@ -111,50 +157,9 @@ if RUN_FULL_TRAINING:
      "The default workflow only runs a two-epoch offline smoke check; opt in to "
      "full experiments after notebook 01 prepares the images. Existing results "
      "under results/ are the report's recorded runs, not new notebook execution outputs."),
-    ("04_pretrained_models", "MobileNetV2 and EfficientNet-B0", "Task 5",
-     ["src/pr_edge/models/sota.py", "scripts/diagnose_frozen_head.py"],
-     '''import json
-
-names = ("mobilenetv2_64", "mobilenetv2_64_ft",
-         "efficientnetb0_64", "efficientnetb0_64_ft",
-         "mobilenetv2_224", "mobilenetv2_224_ft_b128",
-         "efficientnetb0_224", "efficientnetb0_224_ft_b128")
-for name in names:
-    metrics = json.loads((PROJECT / "results" / name / "metrics.json").read_text())
-    print(name, "recorded accuracy:", metrics["accuracy"])
-
-# Section 5 also cites this supplementary fixed-feature diagnostic.
-# Inspect the recorded three-seed summaries without recomputing features.
-diagnostic = json.loads(Path("results/frozen_head_diagnostic/diagnostic.json").read_text())
-print("Diagnostic protocol:", diagnostic["protocol"])
-for name, result in diagnostic["runs"].items():
-    print(name, "recorded feature statistics:", result["features"])
-    for head in result["heads"]:
-        print("lr:", head["lr"], "standardised:", head["standardised"],
-              "mean validation-loss SD:", head["val_loss_sd_mean"])
-
-# Requires the data from notebook 01 and internet for ImageNet weights.
-# Each config reproduces its independent initialization and training policy.
-RUN_FULL_TRAINING = False
-if RUN_FULL_TRAINING:
-    for name in names:
-        run_script("scripts/run_experiment.py", "--config", f"configs/{name}.yaml",
-                   "--device", "auto", "--run-id", f"rerun_{name}")
-
-# Optional diagnostic rerun: fixed, unaugmented features and head-only training.
-# This differs from the main protocol and does not isolate activation causality.
-RUN_DIAGNOSTIC = False
-if RUN_DIAGNOSTIC:
-    run_script("scripts/diagnose_frozen_head.py", "--device", "auto",
-               "--out", "results/rerun_frozen_head_diagnostic/diagnostic.json")
-''',
-     "Primary comparisons use 64 x 64; 224 x 224 runs are supplementary. Frozen "
-     "and fine-tuned policies are defined by their YAML configs. Saved weights "
-     "and the EuroSAT images are excluded from the submission. Full GPU runs "
-     "are optional and are not executed by default. The supplementary diagnostic "
-     "source and recorded feature/head summaries support Section 5's discussion; "
-     "its separate rerun is also opt-in."),
-    ("05_evaluation_and_report", "Evaluation, profiling and report artifacts", "Tasks 4 and 6",
+    pretrained_spec(4, "MobileNetV2", "mobilenetv2"),
+    pretrained_spec(5, "EfficientNet-B0", "efficientnetb0"),
+    ("06_evaluation_and_report", "Evaluation, profiling and report artifacts", "Tasks 4 and 6",
      ["src/pr_edge/evaluate.py", "src/pr_edge/profile.py", "src/pr_edge/schemas.py",
       "src/pr_edge/plots.py", "src/pr_edge/tables.py", "scripts/build_tables.py",
       "scripts/build_figures.py", "scripts/build_report.py"],
@@ -257,11 +262,11 @@ def submission_files(root: Path) -> list[Path]:
 PACKAGE_README = '''# EN3150 Assignment 03 - Group 9 code submission
 
 The report PDF is submitted separately. Extract this entire ZIP before use.
-Open the five top-level notebooks in numeric order, or run each independently
+Open the six numbered top-level notebooks in order, or run each independently
 with a fresh Python kernel. Each contains the original commented Python source
 plus a workflow. Source cells write the corresponding files in raw_code/.
 The additional colab_run.ipynb is the original optional Drive-backed runner;
-it clones the public repository and is not needed for the five task notebooks.
+it clones the public repository and is not needed for the six task notebooks.
 
 Python 3.10+ is required. For local Jupyter, install with:
     python -m pip install -r raw_code/requirements.txt jupyterlab
@@ -278,8 +283,9 @@ network, and does not reproduce the report's accuracies.
 
 raw_code/ includes the Python package, CLI scripts, tests, YAML configs,
 recorded JSON/figures, split manifest, normalization statistics and LaTeX
-report sources. Notebook 04 also includes the frozen-head diagnostic cited
-in Section 5, inspects its recorded summaries, and offers an opt-in rerun.
+report sources. Notebooks 04 (MobileNetV2) and 05 (EfficientNet-B0) each include
+the shared pretrained-model and diagnostic source, inspect only their own
+recorded runs, and offer opt-in training and diagnostic reruns.
 
 No dataset images, pretrained downloads, checkpoints, environment, Git history,
 AGENTS.md or CLAUDE.md are included. EuroSAT and ImageNet weights download only

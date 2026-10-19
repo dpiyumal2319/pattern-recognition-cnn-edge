@@ -28,8 +28,8 @@ supplementary MobileNetV2 config uses 224×224 through the same data pipeline.
 ## Submission notebooks and upload package
 
 The lecturer requires the report PDF and notebook code as separate uploads.
-Five readable, runnable notebooks are in `notebooks/submission/`, covering data,
-custom architectures, training/optimizers, pretrained models, and evaluation.
+Six readable, runnable notebooks are in `notebooks/submission/`, covering data,
+custom architectures, training/optimizers, MobileNetV2, EfficientNet-B0, and evaluation.
 They contain the original Python implementation in Jupyter `%%writefile` cells
 and use the existing package and configs. Full training is opt-in; default
 workflows inspect recorded results and exercise the pipeline without downloads.
@@ -41,7 +41,7 @@ python scripts/build_submission.py
 ```
 
 This creates the gitignored `submission/` folder with `9_A03_EN3150.pdf` and
-`9_A03_EN3150_code.zip`. The ZIP contains the five task notebooks and the
+`9_A03_EN3150_code.zip`. The ZIP contains the six task notebooks and the
 original optional Colab driver at its top level,
 a short README, and `raw_code/` with the Python sources, tests, configs, split
 metadata, recorded results and report sources. It excludes `AGENTS.md`,
