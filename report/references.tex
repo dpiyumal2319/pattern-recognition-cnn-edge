@@ -1,0 +1,84 @@
+% References in IEEE style (#72), input at the end of main.tex.
+%
+% IEEE numbers references in order of FIRST CITATION in the document, and
+% thebibliography numbers them in the order listed here - so the \bibitem
+% order below must follow the order of first \cite in the report. A new
+% citation goes in at the position of its first use, not at the end.
+% tests/test_report.py enforces the order, and that every \cite has an entry
+% and every entry is cited.
+%
+% thebibliography rather than BibTeX: two plain pdflatex passes resolve every
+% citation, so the report builds the same way in CI (latexmk), in VS Code and
+% with pdflatex run directly, with no bibtex step to forget.
+%
+% Bibliographic details verified on 19 Oct 2026 against Crossref (DOIs),
+% arXiv and PMLR; web sources were opened on that date where they allow it.
+
+\begin{thebibliography}{99}
+
+\bibitem{helber2019eurosat}
+P.~Helber, B.~Bischke, A.~Dengel, and D.~Borth, ``EuroSAT: A novel dataset
+and deep learning benchmark for land use and land cover classification,''
+\emph{IEEE J. Sel. Topics Appl. Earth Observ. Remote Sens.}, vol.~12, no.~7,
+pp.~2217--2226, Jul. 2019, doi: 10.1109/JSTARS.2019.2918242.
+
+\bibitem{torchvision2016}
+TorchVision maintainers and contributors, ``TorchVision: PyTorch's computer
+vision library,'' GitHub repository, 2016. [Online]. Available:
+\url{https://github.com/pytorch/vision}. Accessed: Oct.~19, 2026.
+
+\bibitem{deng2009imagenet}
+J.~Deng, W.~Dong, R.~Socher, L.-J.~Li, K.~Li, and L.~Fei-Fei, ``ImageNet: A
+large-scale hierarchical image database,'' in \emph{Proc. IEEE Conf. Comput.
+Vis. Pattern Recognit. (CVPR)}, Miami, FL, USA, 2009, pp.~248--255,
+doi: 10.1109/CVPR.2009.5206848.
+
+\bibitem{cmsisnn}
+Arm Ltd., ``CMSIS-NN software library,'' GitHub repository. [Online].
+Available: \url{https://github.com/ARM-software/CMSIS-NN}. Accessed:
+Oct.~19, 2026.
+
+\bibitem{arm2016dsp}
+Arm Ltd., ``White paper: DSP capabilities of Cortex-M4 and Cortex-M7,'' Arm
+Community Blogs, 2016. [Online]. Available:
+\url{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/white-paper-dsp-capabilities-of-cortex-m4-and-cortex-m7}
+
+\bibitem{hendrycks2016gelu}
+D.~Hendrycks and K.~Gimpel, ``Gaussian error linear units (GELUs),'' 2016,
+arXiv:1606.08415.
+
+\bibitem{sandler2018mobilenetv2}
+M.~Sandler, A.~Howard, M.~Zhu, A.~Zhmoginov, and L.-C.~Chen, ``MobileNetV2:
+Inverted residuals and linear bottlenecks,'' in \emph{Proc. IEEE/CVF Conf.
+Comput. Vis. Pattern Recognit. (CVPR)}, Salt Lake City, UT, USA, 2018,
+pp.~4510--4520, doi: 10.1109/CVPR.2018.00474.
+
+\bibitem{kingma2015adam}
+D.~P.~Kingma and J.~Ba, ``Adam: A method for stochastic optimization,'' in
+\emph{Proc. 3rd Int. Conf. Learn. Represent. (ICLR)}, San Diego, CA, USA,
+2015, arXiv:1412.6980.
+
+\bibitem{schmidt2021descending}
+R.~M.~Schmidt, F.~Schneider, and P.~Hennig, ``Descending through a crowded
+valley---Benchmarking deep learning optimizers,'' in \emph{Proc. 38th Int.
+Conf. Mach. Learn. (ICML)}, ser. Proc. Mach. Learn. Res., vol.~139, 2021,
+pp.~9367--9376.
+
+\bibitem{tan2019efficientnet}
+M.~Tan and Q.~V.~Le, ``EfficientNet: Rethinking model scaling for
+convolutional neural networks,'' in \emph{Proc. 36th Int. Conf. Mach. Learn.
+(ICML)}, ser. Proc. Mach. Learn. Res., vol.~97, Long Beach, CA, USA, 2019,
+pp.~6105--6114.
+
+\bibitem{fu2020keras}
+Y.~Fu, ``Image classification via fine-tuning with EfficientNet,'' Keras code
+examples, 2020. [Online]. Available:
+\url{https://keras.io/examples/vision/image_classification_efficientnet_fine_tuning/}.
+Accessed: Oct.~19, 2026.
+
+\bibitem{st2026stm32f407vg}
+STMicroelectronics, ``STM32F407VG microcontroller,'' product page. [Online].
+Available:
+\url{https://www.st.com/en/microcontrollers-microprocessors/stm32f407vg.html}
+
+\end{thebibliography}

@@ -18,20 +18,31 @@ while momentum adds a velocity term,
   \qquad w \leftarrow w+v.
 \end{equation}
 The momentum value $0.9$ is therefore compared against $m=0$ without changing
-SGD's learning rate.  Adam is evaluated at its own family-appropriate learning
-rate rather than forcing all optimizers to share a numerically equal step
-size: Adam is more forgiving of learning-rate choice,
-whereas the effective region for well-tuned SGD is narrower and
-problem-specific.  The selected starting values, $10^{-3}$ for Adam and
-$10^{-2}$ for SGD, are conventional baselines for this comparison and are
-recorded in the resolved configuration of every run.
+SGD's learning rate.
+
+Neither learning rate was tuned for this problem. Adam uses
+$\alpha=10^{-3}$, the default recommended by its authors, who note that its
+hyper-parameters typically require little tuning~\cite{kingma2015adam}. SGD
+uses $\alpha=10^{-2}$, a common starting value. Each optimizer therefore runs
+at a setting appropriate to its own family, rather than at one shared
+numerical step size that would favour whichever optimizer that value happened
+to suit. Comparing several optimizers at their default settings, instead of
+tuning the hyperparameters of a single one, is supported by a large benchmark
+of deep-learning optimizers, which found the two approaches to perform
+approximately equally well~\cite{schmidt2021descending}. The comparison is
+accordingly one of each optimizer at a standard setting, not at its
+individually tuned best. That qualification matters most for plain SGD:
+unlike Adam, it applies one global step size to every parameter, with no
+per-parameter adaptation, so its best learning rate depends more strongly on
+the problem. Every value is recorded in the resolved configuration of each
+run.
 
 Adam at $\alpha=10^{-3}$ is selected for the final custom-model runs.  As shown
 in Table~\ref{tab:optimizer-comparison}, it achieved the lowest validation loss
 and the highest validation and test accuracy.  Momentum made SGD competitive
 by accumulating a velocity that damps oscillation and maintains progress in a
-consistent descent direction; plain SGD converged much more slowly within the
-same 30-epoch budget.  The choice is based on validation loss rather than test
+consistent descent direction; plain SGD, at its untuned learning rate,
+converged much more slowly within the same 30-epoch budget.  The choice is based on validation loss rather than test
 accuracy, so the test split remains an unbiased final evaluation.  Each run
 uses the same lowest-validation-loss checkpoint rule, making the comparison
 insensitive to a poorer final epoch.
