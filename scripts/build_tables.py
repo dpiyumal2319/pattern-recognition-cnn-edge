@@ -63,7 +63,7 @@ BUILDERS = {
         TABLES_DIR / "sota_comparison.tex",
     ),
     "final": lambda: build_final_comparison(
-        ["model_b", "mobilenetv2_64", "efficientnetb0_64"], TABLES_DIR / "final_comparison.tex"
+        ["model_b_100", "mobilenetv2_64_ft", "efficientnetb0_64_ft"], TABLES_DIR / "final_comparison.tex"
     ),
 }
 

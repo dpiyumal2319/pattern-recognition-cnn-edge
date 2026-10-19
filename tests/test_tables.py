@@ -17,6 +17,7 @@ import pr_edge.tables as tables
 from pr_edge.tables import (
     build_custom_comparison,
     build_custom_convergence,
+    build_final_comparison,
     build_layer_table,
     build_sota_comparison,
 )
@@ -439,3 +440,133 @@ def test_committed_sota_table_is_current(tmp_path):
     script.TABLES_DIR = tmp_path
     fresh = script.BUILDERS["sota"]()
     assert (REPORT_DIR / "tables" / "sota_comparison.tex").read_bytes() == fresh.read_bytes()
+
+
+FINAL_RUNS = ["model_b_100", "mobilenetv2_64_ft", "efficientnetb0_64_ft"]
+
+
+@pytest.fixture
+def final_results(tmp_path, monkeypatch):
+    """Small offline artifact fixtures; no images, weights or network needed."""
+    results = tmp_path / "results"
+    for run_id in FINAL_RUNS:
+        target = results / run_id
+        target.mkdir(parents=True)
+        for name in ("config.yaml", "metrics.json", "profile.json", "selection.json", "history.json"):
+            shutil.copyfile(tables.RESULTS_DIR / run_id / name, target / name)
+    monkeypatch.setattr(tables, "RESULTS_DIR", results)
+    return results
+
+
+def test_final_table_and_discussion_share_measured_results(final_results, tmp_path):
+    text = build_final_comparison(FINAL_RUNS, tmp_path / "final.tex").read_text(encoding="utf-8")
+    assert r"Model B & 100 & 93.14 & 36{,}968 & 150.98 & 3.725 & 12.29 \\" in text
+    assert r"MobileNetV2 & 30 & 98.02 & 2{,}236{,}682 & 8{,}980.07 & 24.461 & 14.40 \\" in text
+    assert r"EfficientNet-B0 & 30 & 98.10 & 4{,}020{,}358 & 16{,}001.55 & 31.979 & 16.59 \\" in text
+    assert r"\gdef\FinalMobileGap{4.89}" in text
+    assert r"\gdef\FinalMobileStorageRatio{59.5}" in text
+    assert r"\gdef\FinalMobileMACRatio{6.57}" in text
+    assert r"\gdef\FinalMobileTrainingRatio{2.85}" in text
+    assert r"\gdef\FinalSOTAExtraCorrect{3}" in text
+    assert r"\begin{table}" not in text
+
+
+def test_final_values_update_from_artifacts_and_bytes(final_results, tmp_path):
+    path = final_results / "model_b_100" / "profile.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(disk_size_bytes=204800, disk_size_kb=999, disk_size_mb=999, macs=1_000_000)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    text = build_final_comparison(FINAL_RUNS, tmp_path / "final.tex").read_text(encoding="utf-8")
+    assert r"\gdef\FinalBSize{200.00}" in text
+    assert r"\gdef\FinalMobileStorageRatio{44.9}" in text
+    assert r"\gdef\FinalMobileMACRatio{24.46}" in text
+    assert "200.00 & 1.000" in text
+
+
+def test_final_discussion_uses_the_selected_epoch_even_when_it_is_not_last(final_results, tmp_path):
+    directory = final_results / "model_b_100"
+    history_path = directory / "history.json"
+    history = json.loads(history_path.read_text(encoding="utf-8"))
+    # Make epoch 1 the validation-loss winner without changing the run budget.
+    history[0]["val_loss"] = min(row["val_loss"] for row in history) / 2
+    history_path.write_text(json.dumps(history), encoding="utf-8")
+    selection_path = directory / "selection.json"
+    selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    selection.update(best_epoch=1, best_val_loss=history[0]["val_loss"], best_val_acc=history[0]["val_acc"])
+    selection_path.write_text(json.dumps(selection), encoding="utf-8")
+
+    text = build_final_comparison(FINAL_RUNS, tmp_path / "final.tex").read_text(encoding="utf-8")
+    assert r"\gdef\FinalBSelectedEpoch{1}" in text
+    assert r"\gdef\FinalBEpochs{100}" in text
+    discussion = (REPORT_DIR / "sections" / "discussion.tex").read_text(encoding="utf-8")
+    assert r"\FinalBSelectedEpoch{}" in discussion
+    assert "last epoch" not in discussion
+
+
+@pytest.mark.parametrize("filename,keys,value,message", [
+    ("metrics.json", ["split"], "val", "test metrics"),
+    ("metrics.json", ["run_id"], "wrong", "different run_id"),
+    ("metrics.json", ["accuracy"], "bad", "invalid result artifacts"),
+    ("metrics.json", ["num_samples"], 100, "must share"),
+    ("profile.json", ["device_name"], "CPU", "must share"),
+    ("profile.json", ["input_shape"], [1, 3, 224, 224], "native 64x64"),
+    ("profile.json", ["macs"], 0, "positive"),
+    ("profile.json", ["trainable_params"], 12810, "train all parameters"),
+    ("config.yaml", ["data", "input_size"], 224, "native 64x64"),
+    ("config.yaml", ["data", "batch_size"], 32, "must share"),
+    ("config.yaml", ["data", "root"], "different-image-tree/", "must share"),
+    ("config.yaml", ["seed"], 123, "must share"),
+    ("config.yaml", ["training", "epochs"], 20, "epoch budget"),
+    ("config.yaml", ["training", "smoke"], True, "smoke run"),
+    ("config.yaml", ["model", "freeze_backbone"], True, "train all parameters"),
+    ("config.yaml", ["model", "pretrained"], False, "pretrained SOTA"),
+    ("config.yaml", ["model", "name"], "model_a", "once each"),
+])
+def test_final_table_rejects_invalid_or_incomparable_rows(final_results, tmp_path, filename, keys, value, message):
+    path = final_results / "mobilenetv2_64_ft" / filename
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    target = data
+    for key in keys[:-1]:
+        target = target[key]
+    target[keys[-1]] = value
+    path.write_text(yaml.safe_dump(data) if filename.endswith("yaml") else json.dumps(data), encoding="utf-8")
+    out = tmp_path / "bad.tex"
+    with pytest.raises(ValueError, match=message):
+        build_final_comparison(FINAL_RUNS, out)
+    assert not out.exists()
+
+
+def test_final_table_checks_model_b_parameter_ceiling(final_results, tmp_path):
+    path = final_results / "model_b_100" / "profile.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(total_params=100_001, trainable_params=100_001)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="100k"):
+        build_final_comparison(FINAL_RUNS, tmp_path / "bad.tex")
+
+
+def test_final_table_rejects_missing_checkpoint_selection(final_results, tmp_path):
+    (final_results / "model_b_100" / "selection.json").unlink()
+    with pytest.raises(ValueError, match="missing selection.json"):
+        build_final_comparison(FINAL_RUNS, tmp_path / "bad.tex")
+
+
+@pytest.mark.parametrize("run_ids", [[], FINAL_RUNS[:2], [FINAL_RUNS[0]] * 3])
+def test_final_table_requires_three_distinct_runs(tmp_path, run_ids):
+    with pytest.raises(ValueError, match="three distinct"):
+        build_final_comparison(run_ids, tmp_path / "bad.tex")
+
+
+def test_final_cli_and_committed_table_are_current(tmp_path):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_tables", REPORT_DIR.parent / "scripts" / "build_tables.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    script.TABLES_DIR = tmp_path
+    assert script.main(["--table", "final"]) == 0
+    fresh = tmp_path / "final_comparison.tex"
+    assert fresh.read_bytes() == (REPORT_DIR / "tables" / "final_comparison.tex").read_bytes()
+    assert b"\r\n" not in fresh.read_bytes()
+    # Canonical order and bytes do not depend on the caller's row order.
+    assert fresh.read_bytes() == build_final_comparison(list(reversed(FINAL_RUNS)), tmp_path / "again.tex").read_bytes()

@@ -1,30 +1,137 @@
-% Owned by #25 (task 6 final comparison and trade-off discussion), the
-% largest single writing deliverable (20 marks). Stub created by #23.
-%
-% To write: Model B against the fine-tuned SOTA models on accuracy, memory
-% footprint and computational cost, and the trade-offs of a custom sub-100k
-% model trained from scratch versus an industry-standard pretrained one. The
-% edge argument is analytic: MACs, size in KB, and what fits in a
-% microcontroller's SRAM.
+% Task 6 (#25). Experimental values in this prose are macros emitted by
+% build_final_comparison from the same artifacts as the table.
 
 \subsection{Model B against lightweight SOTA models}
 \label{sec:final-comparison}
 
+Table~\ref{tab:final-comparison} compares the longer-trained Model~B with
+the two fully fine-tuned ImageNet models at native $64\times64$ input.
+All use the same EuroSAT split, seed, augmentation, batch size and Tesla~T4.
+Each test result belongs to the checkpoint selected by lowest validation
+loss. The epoch budgets are deliberately visible: this compares achieved
+models under a deployment constraint, rather than equal training effort.
+The equal-budget early comparison remains in
+Table~\ref{tab:custom-comparison}; the controlled extension in
+Table~\ref{tab:custom-convergence} shows why that early Model~B result must
+not be treated as its converged capability.
+
 \begin{table}[htbp]
   \centering
-  \caption{Model B against the fine-tuned SOTA models: accuracy, parameters,
-  size, MACs and training time per epoch.}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \input{tables/final_comparison.tex}
+  \caption{Model~B trained from scratch against fully fine-tuned SOTA models.
+  Storage is measured saved-state size in KiB ($1024$ bytes), including
+  serialization overhead; M denotes $10^6$ MACs per image. Epoch time is
+  the training pass only on a Tesla~T4, not edge inference latency.}
   \label{tab:final-comparison}
-  \generatedtable{tables/final_comparison.tex}{\#25}
 \end{table}
 
 \subsection{Trade-offs: accuracy, memory and compute}
 \label{sec:trade-offs}
 
-\pending{trade-off discussion: accuracy vs memory footprint vs computational
-cost, and custom-from-scratch vs pretrained (\#25)}
+\paragraph{Accuracy and training effort.}
+Model~B reaches \FinalBAccuracy\% with \FinalBParams{} parameters.
+MobileNetV2 and EfficientNet-B0 reach \FinalMobileAccuracy\% and
+\FinalEfficientAccuracy\%, respectively: gains of \FinalMobileGap{} and
+\FinalEfficientGap{} percentage points over Model~B. This accuracy advantage
+survives the longer custom-model training budget, although its size is much
+smaller than the early comparison would suggest. Model~B's selected checkpoint
+is epoch \FinalBSelectedEpoch{} within a \FinalBEpochs{}-epoch budget. This
+achieved result does not prove an irreducible capacity limit.
+Conversely, its lower per-epoch time does
+not make it cheaper to train to this result: multiplying the recorded mean
+epoch time by the run budget gives \FinalMobileTrainingRatio{} times the
+MobileNetV2 epoch-time total and \FinalEfficientTrainingRatio{} times the
+EfficientNet-B0 total. These totals exclude historical ImageNet pretraining,
+validation, final test evaluation and setup.
+
+\paragraph{Storage versus working memory.}
+Model~B occupies \FinalBSize{}~KiB on disk. MobileNetV2 and EfficientNet-B0
+require \FinalMobileStorageRatio{} and \FinalEfficientStorageRatio{} times
+as many saved-state bytes. A concrete reference is the
+\href{https://www.st.com/en/microcontrollers-microprocessors/stm32f407vg.html}{STMicroelectronics
+STM32F407VG}, with $1$~MiB flash and $192$~KiB system SRAM, including
+$64$~KiB of core-coupled memory (separate backup SRAM is not counted).
+Model~B's saved weights are below that flash budget; neither SOTA saved state
+is. Firmware and runtime storage must also fit, so this is only a necessary
+storage condition, not a deployment demonstration.
+
+SRAM is a stricter obstacle. The generated layer table in
+Appendix~\ref{app:layer-tables} gives Model~B's first pointwise output as
+$32\times62\times62$. Materialising just that tensor in float32 needs
+$32\times62\times62\times4=492{,}032$ bytes, or about $480.5$~KiB, before
+other live tensors, operator workspace and the stack. It exceeds both the
+named target's SRAM and a hypothetical $256$~KiB SRAM budget even if weights
+stay in flash. Thus the unmodified full-tensor implementation has not been
+shown to fit this microcontroller. A different memory schedule would need
+separate verification; no embedded implementation or peak-RAM measurement
+is claimed here.
+
+\paragraph{Arithmetic cost and measured time.}
+At native resolution MobileNetV2 uses \FinalMobileMACRatio{} times and
+EfficientNet-B0 \FinalEfficientMACRatio{} times Model~B's MACs per image.
+The reduction follows the lecture's two-step construction: for a spatial
+kernel of width $F$, $K$ input channels and $L$ output channels, the regular
+cost per location is $F^2KL$, whereas depthwise plus pointwise costs
+$F^2K+KL$ (\texttt{CNNs.pdf}, pp.~43--44). Model~B also uses global average
+pooling to reduce its dense input. Both SOTA networks already exploit
+efficient convolution blocks; Model~B's additional saving comes from its
+smaller overall architecture. The profiler counts convolution and linear
+MACs, excluding activation functions, normalisation, pooling and memory
+traffic. It therefore supports an arithmetic comparison, not a prediction
+of latency or energy. In particular, the Tesla~T4 epoch-time ratios are much
+smaller than the MAC ratios because training also pays for data loading,
+augmentation, backward passes and device-specific kernels.
+
+\paragraph{What pretraining and resolution establish.}
+Table~\ref{tab:sota-comparison} separates frozen from fully fine-tuned
+backbones at each resolution. Their improvement at fixed $64\times64$
+supports adapting the pretrained representation to satellite imagery;
+it does not measure the benefit of ImageNet initialisation in isolation.
+There is no same-architecture SOTA run trained from random initialisation,
+so architecture, capacity and pretraining remain confounded in the comparison
+with Model~B. ImageNet-to-EuroSAT domain shift is a plausible reason for the
+frozen-feature deficit, rather than an experimentally established mechanism.
+
+The supplementary $224\times224$ runs upsample the same native images;
+they add no new sensor detail. Each network's fine-tuned native-resolution
+result exceeds its frozen upsampled result, while upsampling after fine-tuning
+adds less than one percentage point for substantially more arithmetic.
+This shows why the final comparison keeps native input and treats
+upsampling separately: a resolution gain must not be credited to pretraining
+or presented as free accuracy under an edge compute budget.
+
+\paragraph{Choosing under constraints and limitations.}
+A custom model is attractive for a fixed label set and sensor resolution when
+storage and arithmetic ceilings dominate. Its weights are learnt directly
+from the project's data and its architecture can be controlled without
+depending on a supplied pretrained checkpoint. This does not remove the
+dataset and software licences. Pretrained networks offer stronger achieved
+accuracy here and a practical starting point when development time or
+labelled data are limited, especially for domains closer to their source
+data. Those general advantages were not isolated by a data-size or
+development-time experiment in this study.
+
+Accuracy per KiB describes storage efficiency, but cannot replace an
+application's minimum acceptable accuracy or SRAM and latency constraints.
+Among the pretrained options, EfficientNet-B0 gains only
+\FinalSOTAGap{} percentage points over MobileNetV2, corresponding to
+\FinalSOTAExtraCorrect{} extra correct test predictions, with substantially
+larger storage and MAC requirements. Without repeated seeds this small gap
+does not establish reliable superiority. More broadly, these are single-seed
+results on one image split: they do not demonstrate geographic transfer,
+robustness to a different sensor, or uncertainty in the model ranking.
 
 \subsection{Conclusion}
 \label{sec:conclusion}
 
-\pending{conclusion (\#25)}
+For a strict parameter and storage ceiling, Model~B provides the strongest
+resource saving at a measurable accuracy cost, and longer training narrows
+that cost without increasing inference resources. Where the larger weight
+budget is available and accuracy matters more, fine-tuned MobileNetV2 at
+native resolution is the more economical pretrained choice in these runs.
+EfficientNet-B0's small observed accuracy gain does not justify its larger
+footprint without an application-specific need. None of these choices is a
+verified microcontroller deployment: activation memory, target latency and
+energy remain unmeasured, even for the sub-100k model.
