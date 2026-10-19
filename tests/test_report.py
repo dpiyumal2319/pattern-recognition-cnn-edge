@@ -17,10 +17,12 @@ from pr_edge.paths import REPORT_DIR
 MAIN = REPORT_DIR / "main.tex"
 SECTIONS = REPORT_DIR / "sections"
 
-# The stubs #23's acceptance criteria require, in report order.
+# The stubs #23's acceptance criteria require, in report order, then the
+# appendix sections.
 REQUIRED_SECTIONS = [
     "dataset", "data_preparation", "architecture", "activations",
     "optimizer", "custom_results", "sota_results", "discussion",
+    "hyperparameters",
 ]
 
 
