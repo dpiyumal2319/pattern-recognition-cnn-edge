@@ -197,19 +197,6 @@ git switch main && git pull origin main && git branch -d <branch>
 
 ---
 
-## 2. Commits and attribution
-
-- Agents commit **on behalf of the group member driving the session**, using that member's
-  configured `user.name` / `user.email`.
-- **No AI co-authorship trailers.** Do not add `Co-Authored-By: Claude ...`,
-  `Co-Authored-By: Codex ...`, any "Generated with" line, or any equivalent tool attribution to
-  commit messages or PR descriptions. Commit messages describe the change and nothing else.
-- Conventional-commit subjects: `feat(models): add depthwise separable Model B`.
-- **Commit regularly.** The brief requires a GitHub link so the lecturer can see the work spread
-  over a reasonable duration. One giant commit the night before is visible and looks bad.
-
----
-
 ## 3. The results contract
 
 This is the interface that lets four people work in parallel. Do not change it without an issue.
